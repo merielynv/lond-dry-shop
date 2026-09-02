@@ -1,0 +1,473 @@
+/* =====================================================================
+   LOND DRY SHOP — Reports Page
+   ===================================================================== */
+
+.reports-page-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 15px;
+    margin-bottom: 18px;
+}
+
+.report-print-button {
+    border: none;
+    border-radius: 999px;
+    padding: 11px 18px;
+    background: var(--deep-blue);
+    color: var(--white);
+    font-family: var(--font-body, 'Nunito Sans', sans-serif);
+    font-size: 0.82rem;
+    font-weight: 800;
+    cursor: pointer;
+}
+
+.report-alert {
+    margin-bottom: 18px;
+    padding: 12px 15px;
+    border-radius: var(--radius-sm);
+    background: #FBEAEA;
+    color: #A34747;
+    font-size: 0.8rem;
+    font-weight: 700;
+}
+
+/* ---------- Filter ---------- */
+
+.report-filter-card {
+    margin-bottom: 20px;
+    padding: 16px 18px;
+    border-radius: var(--radius-lg);
+    background: var(--white);
+    box-shadow: var(--shadow-card);
+}
+
+.report-filter-form {
+    display: flex;
+    align-items: flex-end;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.report-date-field {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
+.report-date-field label {
+    color: var(--deep-blue);
+    font-size: 0.72rem;
+    font-weight: 800;
+}
+
+.report-date-field input {
+    height: 40px;
+    box-sizing: border-box;
+    padding: 0 10px;
+    border: 1px solid #DCE9F8;
+    border-radius: var(--radius-sm);
+    outline: none;
+    color: var(--ink);
+    background: #FBFDFF;
+    font: inherit;
+    font-size: 0.78rem;
+}
+
+.report-date-field input:focus {
+    border-color: var(--sky-blue);
+}
+
+.report-filter-button,
+.report-reset-button {
+    height: 40px;
+    box-sizing: border-box;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    border-radius: 999px;
+    padding: 0 16px;
+    font-size: 0.78rem;
+    font-weight: 800;
+    text-decoration: none;
+    cursor: pointer;
+}
+
+.report-filter-button {
+    background: linear-gradient(135deg, var(--sky-blue), var(--deep-blue));
+    color: var(--white);
+}
+
+.report-reset-button {
+    background: var(--pale-blue);
+    color: var(--deep-blue);
+}
+
+/* ---------- Stats ---------- */
+
+.report-stats {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 18px;
+    margin-bottom: 20px;
+}
+
+.report-stat {
+    padding: 18px;
+    border-radius: var(--radius-lg);
+    background: var(--white);
+    box-shadow: var(--shadow-card);
+}
+
+.report-stat span,
+.report-stat small {
+    display: block;
+}
+
+.report-stat span {
+    color: var(--ink-soft);
+    font-size: 0.7rem;
+    font-weight: 800;
+    text-transform: uppercase;
+}
+
+.report-stat strong {
+    display: block;
+    margin: 3px 0;
+    color: var(--deep-blue);
+    font-family: var(--font-display);
+    font-size: 1.45rem;
+}
+
+.report-stat small {
+    color: var(--ink-soft);
+    font-size: 0.68rem;
+}
+
+/* ---------- Cards ---------- */
+
+.report-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+    margin-bottom: 20px;
+}
+
+.report-card {
+    margin-bottom: 20px;
+    border-radius: var(--radius-lg);
+    background: var(--white);
+    box-shadow: var(--shadow-card);
+    overflow: hidden;
+}
+
+.report-grid .report-card {
+    margin-bottom: 0;
+}
+
+.report-card-head {
+    padding: 19px 20px;
+    border-bottom: 1px solid #EDF3FA;
+}
+
+.report-card-head h2 {
+    margin: 0;
+    color: var(--deep-blue);
+    font-family: var(--font-display);
+    font-size: 1.2rem;
+}
+
+.report-card-head p {
+    margin: 3px 0 0;
+    color: var(--ink-soft);
+    font-size: 0.76rem;
+}
+
+/* ---------- Status ---------- */
+
+.status-report-list,
+.payment-report-list,
+.top-customer-list {
+    padding: 8px 20px 15px;
+}
+
+.status-report-row,
+.payment-report-row,
+.top-customer-row {
+    min-height: 52px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    border-bottom: 1px solid #EDF3FA;
+}
+
+.status-report-row:last-child,
+.payment-report-row:last-child,
+.top-customer-row:last-child {
+    border-bottom: none;
+}
+
+.report-status {
+    display: inline-flex;
+    align-items: center;
+    border-radius: 999px;
+    padding: 6px 10px;
+    font-size: 0.68rem;
+    font-weight: 800;
+}
+
+.status-received {
+    background: #E8F3FF;
+    color: #2467A8;
+}
+
+.status-progress {
+    background: #FFF2CE;
+    color: #8B6A00;
+}
+
+.status-ready {
+    background: #E6F8EC;
+    color: #28794B;
+}
+
+.status-released {
+    background: #E9E8FF;
+    color: #5148A5;
+}
+
+.status-cancelled {
+    background: #FBEAEA;
+    color: #A34747;
+}
+
+/* ---------- Payment ---------- */
+
+.payment-report-row > div strong,
+.payment-report-row > div small {
+    display: block;
+}
+
+.payment-report-row > div strong {
+    color: var(--deep-blue);
+    font-size: 0.8rem;
+}
+
+.payment-report-row > div small {
+    margin-top: 2px;
+    color: var(--ink-soft);
+    font-size: 0.68rem;
+}
+
+.payment-report-row > strong {
+    color: var(--deep-blue);
+    font-size: 0.8rem;
+}
+
+/* ---------- Tables ---------- */
+
+.report-table-wrap {
+    width: 100%;
+    overflow-x: auto;
+}
+
+.report-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.report-table th {
+    padding: 12px 18px;
+    background: #F8FBFF;
+    color: var(--ink-soft);
+    border-bottom: 1px solid #EAF2FB;
+    text-align: left;
+    font-size: 0.68rem;
+    font-weight: 800;
+    text-transform: uppercase;
+}
+
+.report-table td {
+    padding: 13px 18px;
+    border-bottom: 1px solid #EDF3FA;
+    color: var(--ink-soft);
+    font-size: 0.76rem;
+}
+
+.report-table td strong {
+    color: var(--deep-blue);
+}
+
+.report-empty,
+.report-empty-cell {
+    color: var(--ink-soft);
+    text-align: center;
+    font-size: 0.78rem;
+}
+
+.report-empty-cell {
+    padding: 30px !important;
+}
+
+/* ---------- Top Customers ---------- */
+
+.top-customer-row {
+    justify-content: flex-start;
+}
+
+.top-customer-number {
+    width: 28px;
+    height: 28px;
+    flex-shrink: 0;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--pale-blue);
+    color: var(--deep-blue);
+    font-size: 0.7rem;
+    font-weight: 900;
+}
+
+.top-customer-info {
+    min-width: 0;
+    flex: 1;
+}
+
+.top-customer-info strong,
+.top-customer-info small {
+    display: block;
+}
+
+.top-customer-info strong {
+    color: var(--ink);
+    font-size: 0.78rem;
+}
+
+.top-customer-info small {
+    margin-top: 2px;
+    color: var(--ink-soft);
+    font-size: 0.66rem;
+}
+
+.top-customer-value {
+    color: var(--deep-blue);
+    font-size: 0.78rem;
+}
+
+/* ---------- Summary ---------- */
+
+.report-summary {
+    display: grid;
+    grid-template-columns: 1fr 1fr 2fr;
+    gap: 18px;
+    margin-bottom: 25px;
+}
+
+.report-summary > div {
+    padding: 16px 18px;
+    border-radius: var(--radius-lg);
+    background: var(--white);
+    box-shadow: var(--shadow-card);
+}
+
+.report-summary span {
+    display: block;
+    color: var(--ink-soft);
+    font-size: 0.68rem;
+    font-weight: 800;
+    text-transform: uppercase;
+}
+
+.report-summary strong {
+    display: block;
+    margin-top: 3px;
+    color: var(--deep-blue);
+    font-family: var(--font-display);
+    font-size: 1rem;
+}
+
+/* ---------- Responsive ---------- */
+
+@media (max-width: 1000px) {
+    .report-stats {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    .report-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .report-summary {
+        grid-template-columns: 1fr 1fr;
+    }
+
+    .report-summary > div:last-child {
+        grid-column: 1 / -1;
+    }
+}
+
+@media (max-width: 650px) {
+    .reports-page-head {
+        align-items: flex-start;
+        flex-direction: column;
+    }
+
+    .report-print-button {
+        width: 100%;
+    }
+
+    .report-filter-form {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .report-date-field input,
+    .report-filter-button,
+    .report-reset-button {
+        width: 100%;
+    }
+
+    .report-stats {
+        grid-template-columns: 1fr;
+    }
+
+    .report-summary {
+        grid-template-columns: 1fr;
+    }
+
+    .report-summary > div:last-child {
+        grid-column: auto;
+    }
+}
+
+/* ---------- Print ---------- */
+
+@media print {
+    .admin-topbar,
+    .report-filter-card,
+    .report-print-button {
+        display: none !important;
+    }
+
+    .admin-main {
+        padding: 0 !important;
+    }
+
+    .report-card,
+    .report-stat,
+    .report-summary > div {
+        box-shadow: none !important;
+        border: 1px solid #ddd;
+    }
+
+    .report-grid {
+        break-inside: avoid;
+    }
+
+    body {
+        background: #fff !important;
+    }
+}
