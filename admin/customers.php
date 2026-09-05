@@ -219,37 +219,27 @@ $adminInitial = strtoupper(substr(trim($adminName), 0, 1)) ?: 'A';
         <nav class="admin-nav" id="adminNav">
 
             <a href="dashboard.php" class="admin-nav__link">
-                <svg viewBox="0 0 24 24">
-                    <path d="M12 3 2 12h3v8h6v-5h2v5h6v-8h3L12 3Z"/>
-                </svg>
+                <svg viewBox="0 0 24 24"><path d="M12 3 2 12h3v8h6v-5h2v5h6v-8h3L12 3Z"/></svg>
                 <span>Dashboard</span>
             </a>
 
             <a href="services.php" class="admin-nav__link">
-                <svg viewBox="0 0 24 24">
-                    <path d="M12.9 2.1a3 3 0 0 0-2.83.8L2.9 10.06a3 3 0 0 0 0 4.24l6.8 6.8a3 3 0 0 0 4.24 0l7.16-7.17a3 3 0 0 0 .8-2.83l-1.06-4.9a3 3 0 0 0-2.29-2.29l-4.65-1Z"/>
-                </svg>
-                <span>Services</span>
+                <svg viewBox="0 0 24 24"><path d="M12.9 2.1a3 3 0 0 0-2.83.8L2.9 10.06a3 3 0 0 0 0 4.24l6.8 6.8a3 3 0 0 0 4.24 0l7.16-7.17a3 3 0 0 0 .8-2.83l-1.06-4.9a3 3 0 0 0-2.29-2.29l-4.65-1Zm2.35 7.15a1.75 1.75 0 1 1 0-3.5 1.75 1.75 0 0 1 0 3.5Z"/></svg>
+                <span>Services<span>
             </a>
 
             <a href="orders.php" class="admin-nav__link">
-                <svg viewBox="0 0 24 24">
-                    <path d="M7 3a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8.83a2 2 0 0 0-.59-1.42l-4.82-4.82A2 2 0 0 0 12.17 2H7Zm7 8H8v-2h6v2Zm2 4H8v-2h8v2Zm-2-8H9V5.5L15.5 12l-1.5.99V7Z"/>
-                </svg>
+                <svg viewBox="0 0 24 24"><path d="M7 3a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8.83a2 2 0 0 0-.59-1.42l-4.82-4.82A2 2 0 0 0 12.17 2H7Zm7 8H8v-2h6v2Zm2 4H8v-2h8v2Zm-2-8H9V5.5L15.5 12l-1.5.99V7Z"/></svg>
                 <span>Orders</span>
             </a>
 
             <a href="customers.php" class="admin-nav__link is-active">
-                <svg viewBox="0 0 24 24">
-                    <path d="M12 12a5 5 0 1 0 0-10 5 5 0 0 0 0 10Zm0 2c-4.42 0-9 2.22-9 5v3h18v-3c0-2.78-4.58-5-9-5Z"/>
-                </svg>
+                <svg viewBox="0 0 24 24"><path d="M12 12a5 5 0 1 0 0-10 5 5 0 0 0 0 10Zm0 2c-4.42 0-9 2.22-9 5v3h18v-3c0-2.78-4.58-5-9-5Z"/></svg>
                 <span>Customers</span>
             </a>
 
             <a href="reports.php" class="admin-nav__link">
-                <svg viewBox="0 0 24 24">
-                    <path d="M5 21V9h3v12H5Zm7.5 0V3h3v18h-3ZM19 21V13h3v8h-3Zm-16 0h-1v-2h20v2H3Z"/>
-                </svg>
+                <svg viewBox="0 0 24 24"><path d="M5 21V9h3v12H5Zm7.5 0V3h3v18h-3ZM19 21V13h3v8h-3Zm-16 0h-1v-2h20v2H3Z"/></svg>
                 <span>Reports</span>
             </a>
 
