@@ -124,6 +124,7 @@ function formatQuantity(float $qty, string $unitType): string
     <div class="receipt-topbar__actions">
       <a href="new_order.php" class="secondary-button">＋ New Order</a>
       <a href="dashboard.php" class="secondary-button">Shop Floor Tracker</a>
+      <a href="../auth/logout.php" class="secondary-button receipt-logout">Log out</a>
     </div>
   </header>
 

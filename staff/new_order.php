@@ -356,6 +356,7 @@ $staffName = $_SESSION['full_name'] ?? 'Staff';
   </div>
 </div>
 
+<script src="../assets/js/staff-shell.js"></script>
 <script src="../assets/js/new-order.js"></script>
 </body>
 </html>

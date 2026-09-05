@@ -426,6 +426,7 @@ $staffInitial = strtoupper(substr(trim($staffName), 0, 1)) ?: 'S';
   </div>
 </div>
 
+<script src="../assets/js/staff-shell.js"></script>
 <script src="../assets/js/staff-dashboard.js"></script>
 </body>
 </html>

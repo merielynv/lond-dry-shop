@@ -1,53 +1,14 @@
 /**
  * LOND Dry Shop — Staff Shop Floor Tracker
- * UI behaviors: mobile nav toggle, profile dropdown, client-side
- * search/filter over the order board (Requirement #5), and the
- * "Change status" confirmation modal.
+ * Page-specific behavior: client-side search/filter over the order
+ * board (Requirement #5) and the "Change status" confirmation modal.
+ * Shared topbar behavior (nav toggle, profile dropdown/logout) lives
+ * in staff-shell.js, loaded alongside this file.
  */
 (function () {
   'use strict';
 
   /* =========================================================
-     MOBILE NAV + PROFILE DROPDOWN
-     ========================================================= */
-
-  var navToggle = document.getElementById('navToggle');
-  var staffNav = document.getElementById('staffNav');
-  var profileTrigger = document.getElementById('profileTrigger');
-  var profileMenu = document.getElementById('profileMenu');
-
-  if (navToggle && staffNav) {
-    navToggle.addEventListener('click', function () {
-      var isOpen = staffNav.classList.toggle('is-open');
-      navToggle.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
-    });
-  }
-
-  if (profileTrigger && profileMenu) {
-    profileTrigger.addEventListener('click', function (event) {
-      event.stopPropagation();
-      var isOpen = profileMenu.classList.toggle('is-open');
-      profileTrigger.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
-    });
-
-    document.addEventListener('click', function (event) {
-      if (!profileMenu.contains(event.target) && !profileTrigger.contains(event.target)) {
-        profileMenu.classList.remove('is-open');
-        profileTrigger.setAttribute('aria-expanded', 'false');
-      }
-    });
-
-    document.addEventListener('keydown', function (event) {
-      if (event.key === 'Escape') {
-        profileMenu.classList.remove('is-open');
-        profileTrigger.setAttribute('aria-expanded', 'false');
-      }
-    });
-  }
-
-  /* =========================================================
-     SEARCH + STATUS FILTER (Requirement #5)
-     ========================================================= */
 
   var search = document.getElementById('trackerSearch');
   var statusFilter = document.getElementById('trackerStatusFilter');
