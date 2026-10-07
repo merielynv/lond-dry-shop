@@ -4,6 +4,8 @@
  * Requirement #1 (Authentication & Authorization) / #11 (System Security)
  */
 
+date_default_timezone_set('Asia/Manila');
+
 if (session_status() === PHP_SESSION_NONE) {
     // Harden session cookie behavior before starting the session.
     session_set_cookie_params([

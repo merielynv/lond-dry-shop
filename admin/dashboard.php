@@ -21,8 +21,6 @@ require_once __DIR__ . '/../includes/session.php';
 requireRole('admin');
 require_once __DIR__ . '/../includes/db.php';
 
-date_default_timezone_set('Asia/Manila');
-
 /* ---------------------------------------------------------------------
    Fetch dashboard metrics
    --------------------------------------------------------------------- */
