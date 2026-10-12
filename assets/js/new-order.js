@@ -2,94 +2,295 @@
  * LOND Dry Shop — New Order & Customer Management Interface
  *
  * Handles:
- *  - AJAX customer lookup / auto-fill (Requirement #5)
- *  - Building a multi-line service cart (Requirement #4: transaction
- *    processing input stage)
- *  - Client-side validation before review (Requirement #6) - the
- *    server in new_order_action.php re-checks everything regardless,
- *    since this can be bypassed
+ *  - AJAX customer lookup + selection (Requirement #5)
+ *  - Registering a NEW customer and EDITING an existing one through a
+ *    structured form: last name, first name, optional middle initial
+ *    and suffix; province, city/municipality, barangay, optional street
+ *  - Building a multi-line service cart (Requirement #4)
+ *  - Client-side validation before review (Requirement #6) - the server
+ *    (customer_action.php / new_order_action.php) re-checks everything
  *  - The "double-check" confirmation modal
  *
- * NOTE: prices shown here are for staff convenience only. The
- * authoritative price used to actually save the order is re-read from
- * the database server-side - this script never sends prices, only
- * service_id + quantity pairs (see buildItemsPayload()).
+ * Prices shown here are for staff convenience only; the server
+ * re-reads prices from the database when saving the order.
  */
 (function () {
   'use strict';
 
-  var cartItems = []; // { service_id, name, unit_type, quantity, unit_price, subtotal }
-
   /* =========================================================
-     ELEMENT REFERENCES
+     LOCATION SUGGESTIONS (edit these lists to add more places)
+     Inputs stay free-text, so any place can still be typed.
      ========================================================= */
 
-  var customerSearch = document.getElementById('customerSearch');
-  var lookupResults = document.getElementById('lookupResults');
-  var customerFoundHint = document.getElementById('customerFoundHint');
+  var DEFAULT_PROVINCE = 'Laguna';
+  var DEFAULT_CITY = 'City of Cabuyao';
 
-  var fullNameInput = document.getElementById('fullName');
-  var phoneInput = document.getElementById('phoneNumber');
-  var addressInput = document.getElementById('address');
-  var phoneError = document.getElementById('phoneError');
+  var LOCATIONS = {
+    'Laguna': {
+      cities: [
+        'City of Biñan', 'City of Cabuyao', 'City of Calamba', 'City of San Pablo',
+        'City of San Pedro', 'City of Santa Rosa',
+        'Alaminos', 'Bay', 'Calauan', 'Cavinti', 'Famy', 'Kalayaan', 'Liliw', 'Los Baños',
+        'Luisiana', 'Lumban', 'Mabitac', 'Magdalena', 'Majayjay', 'Nagcarlan', 'Paete',
+        'Pagsanjan', 'Pakil', 'Pangil', 'Pila', 'Rizal', 'Santa Cruz', 'Santa Maria',
+        'Siniloan', 'Victoria'
+      ],
+      barangays: {
+        'City of Cabuyao': [
+          'Baclaran', 'Banay-banay', 'Banlic', 'Bigaa', 'Butong', 'Casile', 'Diezmo',
+          'Gulod', 'Mamatid', 'Marinig', 'Niugan', 'Pittland', 'Pulo', 'Sala',
+          'San Isidro', 'Poblacion Uno', 'Poblacion Dos', 'Poblacion Tres'
+        ]
+      }
+    }
+  };
+  var EXTRA_PROVINCES = ['Batangas', 'Cavite', 'Quezon', 'Rizal', 'Metro Manila'];
 
-  var serviceSelect = document.getElementById('serviceSelect');
-  var quantityInput = document.getElementById('quantityInput');
-  var quantityLabel = document.getElementById('quantityLabel');
-  var addItemBtn = document.getElementById('addItemBtn');
-  var cartBody = document.getElementById('cartBody');
+  /* =========================================================
+     STATE + ELEMENT REFERENCES
+     ========================================================= */
 
-  var paymentMethodSelect = document.getElementById('paymentMethod');
-  var referenceField = document.getElementById('referenceField');
-  var referenceNumberInput = document.getElementById('referenceNumber');
-  var amountPaidInput = document.getElementById('amountPaid');
-  var paidError = document.getElementById('paidError');
+  var cartItems = [];        // { service_id, name, unit_type, quantity, unit_price, subtotal }
+  var selectedCustomer = null; // full customer row from the server
 
-  var summaryTotal = document.getElementById('summaryTotal');
-  var summaryChange = document.getElementById('summaryChange');
+  function $(id) { return document.getElementById(id); }
 
-  var reviewOrderBtn = document.getElementById('reviewOrderBtn');
-  var newOrderForm = document.getElementById('newOrderForm');
-  var itemsJsonField = document.getElementById('itemsJson');
+  var customerSearch = $('customerSearch');
+  var lookupResults = $('lookupResults');
+  var customerIdField = $('customerId');
+  var customerEmpty = $('customerEmpty');
+  var customerSelected = $('customerSelected');
+  var selectedAvatar = $('selectedAvatar');
+  var selectedName = $('selectedName');
+  var selectedPhone = $('selectedPhone');
+  var selectedAddress = $('selectedAddress');
+  var customerSavedHint = $('customerSavedHint');
+  var newCustomerBtn = $('newCustomerBtn');
+  var editCustomerBtn = $('editCustomerBtn');
+  var changeCustomerBtn = $('changeCustomerBtn');
 
-  var confirmModal = document.getElementById('confirmModal');
-  var confirmCustomerName = document.getElementById('confirmCustomerName');
-  var confirmCustomerPhone = document.getElementById('confirmCustomerPhone');
-  var confirmItemsList = document.getElementById('confirmItemsList');
-  var confirmTotal = document.getElementById('confirmTotal');
-  var confirmPaymentMethod = document.getElementById('confirmPaymentMethod');
-  var confirmAmountPaid = document.getElementById('confirmAmountPaid');
-  var confirmChange = document.getElementById('confirmChange');
-  var confirmEditBtn = document.getElementById('confirmEditBtn');
-  var confirmProceedBtn = document.getElementById('confirmProceedBtn');
+  var customerModal = $('customerModal');
+  var customerForm = $('customerForm');
+  var customerFormAction = $('customerFormAction');
+  var customerFormId = $('customerFormId');
+  var customerModalEyebrow = $('customerModalEyebrow');
+  var customerModalTitle = $('customerModalTitle');
+  var customerModalDesc = $('customerModalDesc');
+  var customerEditNote = $('customerEditNote');
+  var customerFormError = $('customerFormError');
+  var customerSubmitBtn = $('customerSubmitBtn');
+  var useExistingBtn = $('useExistingBtn');
+  var namePreview = $('namePreview');
+  var addressPreview = $('addressPreview');
+
+  var cLastName = $('cLastName');
+  var cFirstName = $('cFirstName');
+  var cMiddle = $('cMiddle');
+  var cSuffix = $('cSuffix');
+  var cPhone = $('cPhone');
+  var cProvince = $('cProvince');
+  var cCity = $('cCity');
+  var cBarangay = $('cBarangay');
+  var cStreet = $('cStreet');
+
+  var serviceSelect = $('serviceSelect');
+  var quantityInput = $('quantityInput');
+  var quantityLabel = $('quantityLabel');
+  var addItemBtn = $('addItemBtn');
+  var cartBody = $('cartBody');
+
+  var paymentMethodSelect = $('paymentMethod');
+  var referenceField = $('referenceField');
+  var referenceNumberInput = $('referenceNumber');
+  var amountPaidInput = $('amountPaid');
+  var paidError = $('paidError');
+  var summaryTotal = $('summaryTotal');
+  var summaryChange = $('summaryChange');
+
+  var reviewOrderBtn = $('reviewOrderBtn');
+  var newOrderForm = $('newOrderForm');
+  var itemsJsonField = $('itemsJson');
+
+  var confirmModal = $('confirmModal');
+  var confirmCustomerName = $('confirmCustomerName');
+  var confirmCustomerPhone = $('confirmCustomerPhone');
+  var confirmItemsList = $('confirmItemsList');
+  var confirmTotal = $('confirmTotal');
+  var confirmPaymentMethod = $('confirmPaymentMethod');
+  var confirmAmountPaid = $('confirmAmountPaid');
+  var confirmChange = $('confirmChange');
+  var confirmEditBtn = $('confirmEditBtn');
+  var confirmProceedBtn = $('confirmProceedBtn');
 
   function peso(amount) {
     var value = isNaN(amount) ? 0 : amount;
     return '₱' + value.toFixed(2).replace(/\d(?=(\d{3})+\.)/g, '$&,');
   }
 
+  function round2(value) {
+    return Math.round(value * 100) / 100;
+  }
+
   /* =========================================================
-     CUSTOMER LOOKUP (AJAX)
+     GENERIC MODAL HELPERS
+     ========================================================= */
+
+  function openModal(modal) {
+    modal.classList.add('is-open');
+    modal.setAttribute('aria-hidden', 'false');
+    document.body.style.overflow = 'hidden';
+  }
+
+  function closeModal(modal) {
+    modal.classList.remove('is-open');
+    modal.setAttribute('aria-hidden', 'true');
+    if (!document.querySelector('.staff-modal.is-open')) {
+      document.body.style.overflow = '';
+    }
+  }
+
+  document.querySelectorAll('[data-modal-close]').forEach(function (element) {
+    element.addEventListener('click', function () {
+      var modal = element.closest('.staff-modal');
+      if (modal) closeModal(modal);
+    });
+  });
+
+  document.addEventListener('keydown', function (event) {
+    if (event.key === 'Escape') {
+      document.querySelectorAll('.staff-modal.is-open').forEach(closeModal);
+    }
+  });
+
+  /* =========================================================
+     CUSTOMER NAME / ADDRESS COMPOSING
+     (mirrors composeFullName / composeAddress in customer_action.php)
+     ========================================================= */
+
+  function cleanInitial(value) {
+    return value.replace(/[^A-Za-zÀ-ÿ]/g, '').toUpperCase();
+  }
+
+  function composeFullName(first, middle, last, suffix) {
+    var parts = [first];
+    if (middle) parts.push(middle + '.');
+    parts.push(last);
+    if (suffix) parts.push(suffix);
+    return parts.filter(Boolean).join(' ').replace(/\s+/g, ' ').trim();
+  }
+
+  function composeAddress(street, barangay, city, province) {
+    var parts = [];
+    if (street) parts.push(street);
+    if (barangay) parts.push(/^(brgy|barangay)\b/i.test(barangay) ? barangay : 'Brgy. ' + barangay);
+    if (city) parts.push(city);
+    if (province) parts.push(province);
+    return parts.join(', ');
+  }
+
+  function updatePreviews() {
+    var name = composeFullName(
+      cFirstName.value.trim(),
+      cleanInitial(cMiddle.value),
+      cLastName.value.trim(),
+      cSuffix.value
+    );
+    var address = composeAddress(
+      cStreet.value.trim(), cBarangay.value.trim(), cCity.value.trim(), cProvince.value.trim()
+    );
+    namePreview.textContent = name || '—';
+    addressPreview.textContent = address || '—';
+  }
+
+  /* =========================================================
+     LOCATION DATALISTS
+     ========================================================= */
+
+  function fillDatalist(listId, values) {
+    var list = $(listId);
+    list.innerHTML = '';
+    values.forEach(function (value) {
+      var option = document.createElement('option');
+      option.value = value;
+      list.appendChild(option);
+    });
+  }
+
+  function refreshLocationLists() {
+    var provinces = Object.keys(LOCATIONS).concat(EXTRA_PROVINCES);
+    fillDatalist('provinceList', provinces);
+
+    var province = LOCATIONS[cProvince.value.trim()];
+    fillDatalist('cityList', province ? province.cities : []);
+
+    var barangays = province && province.barangays[cCity.value.trim()];
+    fillDatalist('barangayList', barangays || []);
+  }
+
+  [cProvince, cCity].forEach(function (input) {
+    input.addEventListener('input', refreshLocationLists);
+  });
+
+  [cLastName, cFirstName, cMiddle, cSuffix, cStreet, cBarangay, cCity, cProvince].forEach(function (input) {
+    input.addEventListener('input', updatePreviews);
+    input.addEventListener('change', updatePreviews);
+  });
+
+  /* =========================================================
+     SELECTED CUSTOMER CARD
+     ========================================================= */
+
+  function setSelectedCustomer(customer) {
+    selectedCustomer = customer;
+    customerIdField.value = customer.customer_id;
+
+    selectedAvatar.textContent = (customer.first_name || customer.full_name || '?').charAt(0).toUpperCase();
+    selectedName.textContent = customer.full_name;
+    selectedPhone.textContent = customer.phone_number;
+    selectedAddress.textContent = customer.address || 'No address on file';
+
+    customerEmpty.hidden = true;
+    customerSelected.hidden = false;
+  }
+
+  function clearSelectedCustomer() {
+    selectedCustomer = null;
+    customerIdField.value = '';
+    customerSelected.hidden = true;
+    customerEmpty.hidden = false;
+    customerSavedHint.hidden = true;
+  }
+
+  function flashSavedHint(message) {
+    customerSavedHint.textContent = '✓ ' + message;
+    customerSavedHint.hidden = false;
+  }
+
+  if (changeCustomerBtn) {
+    changeCustomerBtn.addEventListener('click', function () {
+      clearSelectedCustomer();
+      customerSearch.focus();
+    });
+  }
+
+  /* =========================================================
+     CUSTOMER LOOKUP (AJAX) - suggestion list for same-name matches
      ========================================================= */
 
   var lookupTimer = null;
 
   function runLookup(term) {
-    fetch('customer_lookup.php?term=' + encodeURIComponent(term))
+    fetch('customer_lookup.php?term=' + encodeURIComponent(term), { credentials: 'same-origin' })
       .then(function (response) { return response.json(); })
-      .then(function (data) {
-        renderLookupResults(data.customers || []);
-      })
-      .catch(function () {
-        renderLookupResults([]);
-      });
+      .then(function (data) { renderLookupResults(data.customers || []); })
+      .catch(function () { renderLookupResults([]); });
   }
 
   function renderLookupResults(customers) {
     lookupResults.innerHTML = '';
 
     if (customers.length === 0) {
-      lookupResults.innerHTML = '<p class="lookup-empty">No matching customer. You can encode them as new below.</p>';
+      lookupResults.innerHTML = '<p class="lookup-empty">No matching customer. Use “＋ New Customer” to register them.</p>';
       lookupResults.hidden = false;
       return;
     }
@@ -98,20 +299,16 @@
       var button = document.createElement('button');
       button.type = 'button';
       button.className = 'lookup-result';
-      button.innerHTML =
-        '<strong></strong><span></span>';
+      button.innerHTML = '<strong></strong><span></span>';
       button.querySelector('strong').textContent = customer.full_name;
       button.querySelector('span').textContent =
         customer.phone_number + (customer.address ? ' · ' + customer.address : '');
 
       button.addEventListener('click', function () {
-        fullNameInput.value = customer.full_name;
-        phoneInput.value = customer.phone_number;
-        addressInput.value = customer.address || '';
+        setSelectedCustomer(customer);
         lookupResults.hidden = true;
         customerSearch.value = '';
-        customerFoundHint.hidden = false;
-        validatePhone();
+        customerSavedHint.hidden = true;
       });
 
       lookupResults.appendChild(button);
@@ -123,18 +320,13 @@
   if (customerSearch) {
     customerSearch.addEventListener('input', function () {
       var term = customerSearch.value.trim();
-      customerFoundHint.hidden = true;
-
       clearTimeout(lookupTimer);
 
       if (term.length < 2) {
         lookupResults.hidden = true;
         return;
       }
-
-      lookupTimer = setTimeout(function () {
-        runLookup(term);
-      }, 250);
+      lookupTimer = setTimeout(function () { runLookup(term); }, 250);
     });
 
     document.addEventListener('click', function (event) {
@@ -144,29 +336,198 @@
     });
   }
 
-  function validatePhone() {
-    var value = phoneInput.value.trim();
-    var pattern = /^[0-9+\-\s]{7,20}$/;
+  /* =========================================================
+     CUSTOMER MODAL (add / edit)
+     ========================================================= */
 
-    if (value === '') {
-      phoneError.textContent = '';
-      return false;
-    }
-    if (!pattern.test(value)) {
-      phoneError.textContent = 'Use 7-20 digits (spaces, +, - are okay).';
-      phoneError.classList.add('is-error');
-      return false;
-    }
-    phoneError.textContent = '';
-    phoneError.classList.remove('is-error');
-    return true;
+  var duplicateCustomer = null; // set when the server reports an existing phone number
+
+  function clearFormErrors() {
+    customerForm.querySelectorAll('[data-error-for]').forEach(function (el) {
+      el.textContent = '';
+      el.classList.remove('is-error');
+    });
+    customerForm.querySelectorAll('.has-error').forEach(function (el) {
+      el.classList.remove('has-error');
+    });
+    customerFormError.hidden = true;
+    customerFormError.textContent = '';
+    useExistingBtn.hidden = true;
+    duplicateCustomer = null;
   }
 
-  if (phoneInput) {
-    phoneInput.addEventListener('blur', validatePhone);
-    phoneInput.addEventListener('input', function () {
-      phoneError.textContent = '';
-      phoneError.classList.remove('is-error');
+  function showFieldErrors(errors) {
+    Object.keys(errors).forEach(function (field) {
+      var hint = customerForm.querySelector('[data-error-for="' + field + '"]');
+      var input = customerForm.querySelector('[name="' + field + '"]');
+      if (hint) {
+        hint.textContent = errors[field];
+        hint.classList.add('is-error');
+      }
+      if (input) input.classList.add('has-error');
+    });
+  }
+
+  function openCustomerModal(mode, customer) {
+    clearFormErrors();
+    customerForm.reset();
+
+    if (mode === 'edit' && customer) {
+      customerFormAction.value = 'update';
+      customerFormId.value = customer.customer_id;
+      customerModalEyebrow.textContent = 'Edit customer';
+      customerModalTitle.textContent = 'Edit Customer Details';
+      customerModalDesc.textContent = 'Update a new phone number, a new address, or fix a spelling mistake.';
+      customerEditNote.hidden = false;
+      customerSubmitBtn.textContent = 'Save Changes';
+
+      cLastName.value = customer.last_name || '';
+      cFirstName.value = customer.first_name || '';
+      cMiddle.value = customer.middle_initial || '';
+      cSuffix.value = customer.suffix || '';
+      cPhone.value = customer.phone_number || '';
+      cProvince.value = customer.province || '';
+      cCity.value = customer.city || '';
+      cBarangay.value = customer.barangay || '';
+      cStreet.value = customer.street_address || '';
+    } else {
+      customerFormAction.value = 'create';
+      customerFormId.value = '';
+      customerModalEyebrow.textContent = 'New customer';
+      customerModalTitle.textContent = 'Register New Customer';
+      customerModalDesc.textContent = 'Fields marked * are required.';
+      customerEditNote.hidden = true;
+      customerSubmitBtn.textContent = 'Save Customer';
+
+      cProvince.value = DEFAULT_PROVINCE;
+      cCity.value = DEFAULT_CITY;
+    }
+
+    refreshLocationLists();
+    updatePreviews();
+    openModal(customerModal);
+    setTimeout(function () { cLastName.focus(); }, 50);
+  }
+
+  if (newCustomerBtn) {
+    newCustomerBtn.addEventListener('click', function () {
+      lookupResults.hidden = true;
+      openCustomerModal('create', null);
+    });
+  }
+
+  // Always pre-fill the Edit form from the customer's CURRENT saved record
+  // (not just what the search list returned), so staff never have to ask
+  // the customer for details that are already on file.
+  function loadCustomerRecord(customerId) {
+    return fetch('customer_action.php?action=get&customer_id=' + encodeURIComponent(customerId), {
+      credentials: 'same-origin'
+    })
+      .then(function (response) { return response.json(); })
+      .then(function (data) { return data.ok ? data.customer : null; })
+      .catch(function () { return null; });
+  }
+
+  if (editCustomerBtn) {
+    editCustomerBtn.addEventListener('click', function () {
+      if (!selectedCustomer) return;
+
+      editCustomerBtn.disabled = true;
+      loadCustomerRecord(selectedCustomer.customer_id).then(function (fresh) {
+        if (fresh) setSelectedCustomer(fresh); // keep the card in sync too
+        openCustomerModal('edit', fresh || selectedCustomer);
+        editCustomerBtn.disabled = false;
+      });
+    });
+  }
+
+  if (useExistingBtn) {
+    useExistingBtn.addEventListener('click', function () {
+      if (duplicateCustomer) {
+        setSelectedCustomer(duplicateCustomer);
+        closeModal(customerModal);
+      }
+    });
+  }
+
+  // Client-side checks (the server re-validates every rule).
+  function validateCustomerForm() {
+    var errors = {};
+    var namePattern = /^[A-Za-zÀ-ÿ][A-Za-zÀ-ÿ\s.'’\-]*$/;
+
+    if (!cLastName.value.trim()) errors.last_name = 'Last name is required.';
+    else if (!namePattern.test(cLastName.value.trim())) errors.last_name = 'Use letters only.';
+
+    if (!cFirstName.value.trim()) errors.first_name = 'First name is required.';
+    else if (!namePattern.test(cFirstName.value.trim())) errors.first_name = 'Use letters only.';
+
+    var mi = cleanInitial(cMiddle.value);
+    if (cMiddle.value.trim() && (mi.length < 1 || mi.length > 2)) {
+      errors.middle_initial = 'Middle initial should be 1-2 letters (e.g. D).';
+    }
+
+    var phone = cPhone.value.replace(/[\s\-()]/g, '');
+    if (/^\+639\d{9}$/.test(phone)) phone = '0' + phone.slice(3);
+    if (!cPhone.value.trim()) errors.phone_number = 'Phone number is required.';
+    else if (!/^09\d{9}$/.test(phone)) errors.phone_number = 'Enter a valid mobile number, e.g. 09171234567.';
+
+    if (!cProvince.value.trim()) errors.province = 'Province is required.';
+    if (!cCity.value.trim()) errors.city = 'City / Municipality is required.';
+    if (!cBarangay.value.trim()) errors.barangay = 'Barangay is required.';
+
+    return errors;
+  }
+
+  if (customerForm) {
+    customerForm.addEventListener('submit', function (event) {
+      event.preventDefault();
+      clearFormErrors();
+
+      var errors = validateCustomerForm();
+      if (Object.keys(errors).length > 0) {
+        showFieldErrors(errors);
+        return;
+      }
+
+      var isEdit = customerFormAction.value === 'update';
+      customerSubmitBtn.disabled = true;
+      customerSubmitBtn.textContent = 'Saving...';
+
+      fetch('customer_action.php', {
+        method: 'POST',
+        body: new FormData(customerForm),
+        credentials: 'same-origin'
+      })
+        .then(function (response) {
+          return response.json().then(function (data) { return data; });
+        })
+        .then(function (data) {
+          if (data.ok) {
+            setSelectedCustomer(data.customer);
+            flashSavedHint(data.message);
+            closeModal(customerModal);
+            return;
+          }
+
+          if (data.errors) showFieldErrors(data.errors);
+          if (data.existing) {
+            duplicateCustomer = data.existing;
+            useExistingBtn.hidden = false;
+          }
+          if (!data.errors) {
+            customerFormError.textContent = data.message || 'Unable to save the customer. Please try again.';
+            customerFormError.hidden = false;
+          }
+        })
+        .catch(function () {
+          customerFormError.textContent =
+            'Unable to save the customer. Your session may have expired — please refresh the page and try again.';
+          customerFormError.hidden = false;
+        })
+        .then(function () {
+          customerSubmitBtn.disabled = false;
+          customerSubmitBtn.textContent = isEdit ? 'Save Changes' : 'Save Customer';
+        });
     });
   }
 
@@ -221,9 +582,6 @@
     }
 
     var unitPrice = parseFloat(option.getAttribute('data-price')) || 0;
-    var name = option.getAttribute('data-name');
-    var unit = option.getAttribute('data-unit');
-
     var existing = cartItems.find(function (item) { return item.service_id === serviceId; });
 
     if (existing) {
@@ -232,8 +590,8 @@
     } else {
       cartItems.push({
         service_id: serviceId,
-        name: name,
-        unit_type: unit,
+        name: option.getAttribute('data-name'),
+        unit_type: option.getAttribute('data-unit'),
         quantity: quantity,
         unit_price: unitPrice,
         subtotal: round2(quantity * unitPrice)
@@ -249,10 +607,6 @@
     cartItems.splice(index, 1);
     renderCart();
     recalcTotals();
-  }
-
-  function round2(value) {
-    return Math.round(value * 100) / 100;
   }
 
   function unitSuffix(unitType) {
@@ -337,7 +691,7 @@
 
   function toggleReferenceField() {
     var method = paymentMethodSelect.value;
-    referenceField.hidden = !(method === 'Card' || method === 'Online');
+    referenceField.hidden = (method !== 'Online');
   }
 
   if (amountPaidInput) {
@@ -355,11 +709,8 @@
   function validateBeforeReview() {
     var errors = [];
 
-    if (fullNameInput.value.trim() === '') {
-      errors.push('Please enter the customer\'s full name.');
-    }
-    if (!validatePhone() || phoneInput.value.trim() === '') {
-      errors.push('Please enter a valid phone number.');
+    if (!selectedCustomer) {
+      errors.push('Please select an existing customer or register a new one.');
     }
     if (cartItems.length === 0) {
       errors.push('Please add at least one service to the order.');
@@ -373,8 +724,8 @@
     }
 
     var method = paymentMethodSelect.value;
-    if ((method === 'Card' || method === 'Online') && referenceNumberInput.value.trim() === '') {
-      errors.push('A reference number is required for Card or Online payments.');
+    if (method === 'Online' && referenceNumberInput.value.trim() === '') {
+      errors.push('A reference number is required for Online payments.');
     }
 
     if (errors.length > 0) {
@@ -385,14 +736,13 @@
   }
 
   function openConfirmModal() {
-    confirmCustomerName.textContent = fullNameInput.value.trim();
-    confirmCustomerPhone.textContent = phoneInput.value.trim();
+    confirmCustomerName.textContent = selectedCustomer.full_name;
+    confirmCustomerPhone.textContent = selectedCustomer.phone_number;
 
     confirmItemsList.innerHTML = '';
     cartItems.forEach(function (item) {
       var li = document.createElement('li');
-      li.innerHTML =
-        '<span></span><strong></strong>';
+      li.innerHTML = '<span></span><strong></strong>';
       li.querySelector('span').textContent =
         item.name + ' — ' + item.quantity + ' ' + unitSuffix(item.unit_type);
       li.querySelector('strong').textContent = peso(item.subtotal);
@@ -408,15 +758,7 @@
     confirmAmountPaid.textContent = peso(amountPaid);
     confirmChange.textContent = peso(change > 0 ? change : 0);
 
-    confirmModal.classList.add('is-open');
-    confirmModal.setAttribute('aria-hidden', 'false');
-    document.body.style.overflow = 'hidden';
-  }
-
-  function closeConfirmModal() {
-    confirmModal.classList.remove('is-open');
-    confirmModal.setAttribute('aria-hidden', 'true');
-    document.body.style.overflow = '';
+    openModal(confirmModal);
   }
 
   if (reviewOrderBtn) {
@@ -428,22 +770,8 @@
   }
 
   if (confirmEditBtn) {
-    confirmEditBtn.addEventListener('click', closeConfirmModal);
+    confirmEditBtn.addEventListener('click', function () { closeModal(confirmModal); });
   }
-
-  document.querySelectorAll('[data-modal-close]').forEach(function (element) {
-    element.addEventListener('click', function () {
-      if (confirmModal && confirmModal.classList.contains('is-open')) {
-        closeConfirmModal();
-      }
-    });
-  });
-
-  document.addEventListener('keydown', function (event) {
-    if (event.key === 'Escape' && confirmModal && confirmModal.classList.contains('is-open')) {
-      closeConfirmModal();
-    }
-  });
 
   function buildItemsPayload() {
     return cartItems.map(function (item) {
@@ -460,8 +788,8 @@
     });
   }
 
-  // Belt-and-suspenders: never allow the raw <form> to submit without
-  // the confirmation step (e.g. pressing Enter in a text field).
+  // Never allow the raw <form> to submit without the confirmation step
+  // (e.g. pressing Enter in a text field).
   if (newOrderForm) {
     newOrderForm.addEventListener('submit', function (event) {
       if (itemsJsonField.value === '[]' || itemsJsonField.value === '') {

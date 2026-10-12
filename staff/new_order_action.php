@@ -3,8 +3,7 @@
  * LOND Dry Shop - Staff: Create Order Transaction
  * ITP104 - Information Management 2 | Semestral Project
  *
- * Backend handler for staff/new_order.php. Saves the customer,
- * order header, order line items, and payment record inside a single
+ * Backend handler for staff/new_order.php. Saves the order header, order line items, and payment record inside a single
  * database transaction, then generates the claim code.
  *
  * Requirement #4 (Transaction Processing): full flow of
@@ -43,16 +42,15 @@ if (!verifyCsrfToken($_POST['csrf_token'] ?? null)) {
 }
 
 /* ---------------------------------------------------------------------
-   1. Validate customer details
+   1. Validate customer selection
+      Customers are now registered/edited separately through
+      customer_action.php (structured name + address parts), so an
+      order only needs the id of an existing customer. Existence is
+      verified inside the transaction below.
    --------------------------------------------------------------------- */
-$fullName    = trim($_POST['full_name'] ?? '');
-$phoneNumber = trim($_POST['phone_number'] ?? '');
-$address     = trim($_POST['address'] ?? '');
+$customerId = (int) ($_POST['customer_id'] ?? 0);
 
-if ($fullName === '' || mb_strlen($fullName) > 100) {
-    backToOrderForm('customer');
-}
-if ($phoneNumber === '' || !preg_match('/^[0-9+\-\s]{7,20}$/', $phoneNumber)) {
+if ($customerId <= 0) {
     backToOrderForm('customer');
 }
 
@@ -89,11 +87,11 @@ $amountPaid     = (float) ($_POST['amount_paid'] ?? -1);
 $referenceInput = trim($_POST['reference_number'] ?? '');
 $notes          = trim($_POST['notes'] ?? '');
 
-$allowedPaymentMethods = ['Cash', 'Card', 'Online'];
+$allowedPaymentMethods = ['Cash', 'Online'];
 if (!in_array($paymentMethod, $allowedPaymentMethods, true)) {
     backToOrderForm('payment');
 }
-if (in_array($paymentMethod, ['Card', 'Online'], true) && $referenceInput === '') {
+if ($paymentMethod === 'Online' && $referenceInput === '') {
     backToOrderForm('reference');
 }
 if ($amountPaid < 0) {
@@ -105,7 +103,7 @@ if (mb_strlen($notes) > 500) {
 
 /* ---------------------------------------------------------------------
    4. Process: re-price every line item from the database (never trust
-      client-supplied prices), upsert the customer, then save everything
+      client-supplied prices), verify the customer, then save everything
       as one atomic transaction.
    --------------------------------------------------------------------- */
 try {
@@ -156,31 +154,13 @@ try {
     $amountChange = round($amountPaid - $totalAmount, 2);
     $referenceNumber = ($paymentMethod === 'Cash') ? null : $referenceInput;
 
-    // Customer upsert by phone number (unique key). A returning
-    // customer's saved record is refreshed; a new one is inserted.
-    $findCustomer = $pdo->prepare('SELECT customer_id FROM customers WHERE phone_number = ? LIMIT 1');
-    $findCustomer->execute([$phoneNumber]);
-    $existingCustomer = $findCustomer->fetch();
-
-    if ($existingCustomer) {
-        $customerId = (int) $existingCustomer['customer_id'];
-        $updateCustomer = $pdo->prepare(
-            'UPDATE customers
-                SET full_name = :full_name,
-                    address = COALESCE(NULLIF(:address, \'\'), address)
-              WHERE customer_id = :customer_id'
-        );
-        $updateCustomer->execute([
-            'full_name'   => $fullName,
-            'address'     => $address,
-            'customer_id' => $customerId,
-        ]);
-    } else {
-        $insertCustomer = $pdo->prepare(
-            'INSERT INTO customers (full_name, phone_number, address) VALUES (?, ?, ?)'
-        );
-        $insertCustomer->execute([$fullName, $phoneNumber, $address !== '' ? $address : null]);
-        $customerId = (int) $pdo->lastInsertId();
+    // Make sure the selected customer really exists (never trust the
+    // id coming from the browser).
+    $findCustomer = $pdo->prepare('SELECT 1 FROM customers WHERE customer_id = ? LIMIT 1');
+    $findCustomer->execute([$customerId]);
+    if (!$findCustomer->fetch()) {
+        $pdo->rollBack();
+        backToOrderForm('customer');
     }
 
     // Generate a unique customer-facing claim code (never re-uses the

@@ -46,10 +46,18 @@ CREATE TABLE users (
 -- =====================================================================
 DROP TABLE IF EXISTS customers;
 CREATE TABLE customers (
-    customer_id     INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,       -- Unique customer ID
-    full_name       VARCHAR(100)        NOT NULL,                  -- Customer's name
-    phone_number    VARCHAR(20)         NOT NULL UNIQUE,           -- Unique mobile number used for tracking lookups
-    address         TEXT                NULL,                      -- Optional address (for future delivery service)
+    customer_id     INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    first_name      VARCHAR(50)         NOT NULL,
+    last_name       VARCHAR(50)         NOT NULL,
+    middle_initial  VARCHAR(5)          NULL,
+    suffix          VARCHAR(10)         NULL,
+    full_name       VARCHAR(150)        NOT NULL,                          -- auto-composed from the name parts
+    phone_number    VARCHAR(20)         NOT NULL UNIQUE,
+    province        VARCHAR(100)        NULL,                              -- Unique mobile number used for tracking lookups
+    city            VARCHAR(100)        NULL,
+    barangay        VARCHAR(100)        NULL,
+    street_address  VARCHAR(150)        NULL,
+    address         TEXT                NULL,                              -- auto-composed from the address parts
     created_at      TIMESTAMP           NOT NULL DEFAULT CURRENT_TIMESTAMP -- When the customer was first recorded
 ) ENGINE=InnoDB;
 
@@ -82,7 +90,7 @@ CREATE TABLE orders (
     user_id         INT UNSIGNED        NOT NULL,                  -- FK -> users (staff who encoded the order)
     claim_code      VARCHAR(30)         NOT NULL UNIQUE,           -- Customer-facing alpha-numeric tracking code
     order_status    ENUM('Received','In Progress','Ready','Released','Cancelled')
-                                         NOT NULL DEFAULT 'Received', -- Current processing state
+                                        NOT NULL DEFAULT 'Received', -- Current processing state
     total_amount    DECIMAL(10,2)       NOT NULL DEFAULT 0.00,     -- Final computed sum for the transaction
     notes           TEXT                NULL DEFAULT NULL,         -- Optional special instructions (e.g. "separate whites", "extra starch on collars")
     created_at      TIMESTAMP           NOT NULL DEFAULT CURRENT_TIMESTAMP, -- Drop-off / payment timestamp (pay-first rule)
@@ -136,8 +144,8 @@ DROP TABLE IF EXISTS payments;
 CREATE TABLE payments (
     payment_id        INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,     -- Unique payment ID
     order_id           INT UNSIGNED       NOT NULL,                 -- FK -> orders (order being paid for)
-    payment_method     ENUM('Cash','Card','Online') NOT NULL,       -- Payment channel used
-    reference_number   VARCHAR(50)        NULL DEFAULT NULL,        -- External trace/approval no. for Card/Online (NULL for Cash)
+    payment_method     ENUM('Cash', 'Online') NOT NULL,       -- Payment channel used
+    reference_number   VARCHAR(50)        NULL DEFAULT NULL,        -- External trace/reference no. for Online payments (NULL for Cash)
     amount_paid        DECIMAL(10,2)      NOT NULL,                 -- Total cash/digital amount tendered by the customer
     amount_change       DECIMAL(10,2)      NOT NULL DEFAULT 0.00,     -- Change given back (amount_paid - orders.total_amount), stored for historical receipt reprints
 
@@ -154,6 +162,7 @@ SET FOREIGN_KEY_CHECKS = 1;
 -- e.g. staff search orders by claim code / customer name / status,
 -- admin filters order history and reports by date.
 -- =====================================================================
+CREATE INDEX idx_customers_last_name   ON customers(last_name);
 CREATE INDEX idx_customers_full_name   ON customers(full_name);
 CREATE INDEX idx_orders_claim_code     ON orders(claim_code);
 CREATE INDEX idx_orders_status         ON orders(order_status);
@@ -200,42 +209,135 @@ INSERT INTO services (service_name, unit_type, current_price, category_type) VAL
 ('Standalone Ironing (Press Only)',  'per_piece',20.00, 'Regular'),
 ('Dry Cleaning',                     'per_piece',450.00,'Specialty/Dry Clean');
 
--- Customers
--- NOTE: customer_id 3 was originally "Yeshabelle Olango" but she has since
--- been added as a system admin instead (see USERS section above). Since
--- her order LRY-2026-0003 (₱450.00, Released) is protected by
--- ON DELETE RESTRICT on orders.customer_id, her customer record was
--- renamed rather than deleted, so that order's history and receipt stay
--- intact and attributable to a real (walk-in) customer name.
-INSERT INTO customers (full_name, phone_number, address) VALUES
-('Juan Dela Cruz',   '09171234567', 'Brgy. Banay-banay, City of Cabuyao, Laguna'),
-('Maria Santos',     '09281234567', 'Brgy. Mamatid, City of Cabuyao, Laguna'),
-('Kristine Bautista','09391234567', 'Brgy. Marinig, City of Cabuyao, Laguna');
+-- 1. ADD MORE CUSTOMERS SO IT'S REALISTIC
+INSERT INTO customers (first_name, last_name, full_name, phone_number, province, city, barangay, address) VALUES
+('Juan',     'Dela Cruz', 'Juan Dela Cruz',      '09171234567', 'Laguna', 'City of Cabuyao', 'Banay-banay', 'Brgy. Banay-banay, City of Cabuyao, Laguna'),
+('Maria',    'Santos',    'Maria Santos',        '09281234567', 'Laguna', 'City of Cabuyao', 'Mamatid',     'Brgy. Mamatid, City of Cabuyao, Laguna'),
+('Kristine', 'Bautista',  'Kristine Bautista',   '09391234567', 'Laguna', 'City of Cabuyao', 'Marinig',     'Brgy. Marinig, City of Cabuyao, Laguna'),
+('Roberto',  'Garcia',     'Roberto Garcia',     '09491234567', 'Laguna', 'City of Cabuyao', 'Pulo',        'Brgy. Pulo, City of Cabuyao, Laguna'),
+('Angelica', 'Reyes',      'Angelica Reyes',     '09181234567', 'Laguna', 'City of Cabuyao', 'Banlic',      'Brgy. Banlic, City of Cabuyao, Laguna'),
+('Michael',  'Villanueva', 'Michael Villanueva', '09291234567', 'Laguna', 'City of Cabuyao', 'Gulod',       'Brgy. Gulod, City of Cabuyao, Laguna'),
+('Sarah',    'Aquino',     'Sarah Aquino',       '09381234567', 'Laguna', 'City of Cabuyao', 'San Isidro',  'Brgy. San Isidro, City of Cabuyao, Laguna'),
+('Carlo',    'Mendoza',    'Carlo Mendoza',      '09501234567', 'Laguna', 'City of Cabuyao', 'Diezmo',      'Brgy. Diezmo, City of Cabuyao, Laguna'),
+('Bea',      'Alonzo',     'Bea Alonzo',         '09191234567', 'Laguna', 'City of Cabuyao', 'Niugan',      'Brgy. Niugan, City of Cabuyao, Laguna'),
+('Kevin',    'Santos',     'Kevin Santos',       '09351234567', 'Laguna', 'City of Cabuyao', 'Pittland',    'Brgy. Pittland, City of Cabuyao, Laguna');
 
--- Orders (covers In Progress, Ready, Released, and Cancelled scenarios)
--- total_amount for each order = sum of its order_items subtotals below
-INSERT INTO orders (customer_id, user_id, claim_code, order_status, total_amount, notes, created_at, completed_at, cancelled_at) VALUES
-(1, 2, 'LRY-2026-0001', 'In Progress', 242.50, 'Separate whites from colored clothes.',      '2026-08-28 09:15:00', NULL, NULL),
-(2, 2, 'LRY-2026-0002', 'Ready',       220.00, NULL,                                          '2026-08-27 13:40:00', NULL, NULL),
-(3, 3, 'LRY-2026-0003', 'Released',    450.00, 'Handle with care, delicate fabric.',          '2026-08-25 10:05:00', '2026-08-27 16:20:00', NULL),
-(1, 3, 'LRY-2026-0004', 'Cancelled',   382.50, 'Extra starch on collars.',                    '2026-08-26 11:00:00', NULL, '2026-08-26 11:30:00');
+-- 2. PROCEDURE TO GENERATE 1-YEAR BACKDATED HISTORY (CASH & ONLINE ONLY)
+DELIMITER $$
 
--- Order Items (line items per order: per_kg, per_load, per_piece)
-INSERT INTO order_items (order_id, service_id, quantity, unit_price_at_time, subtotal) VALUES
--- Order 1: 4.5 kg Wash, Dry, & Fold (202.50) + 2 pieces Standalone Ironing (40.00) = 242.50
-(1, 1, 4.50, 45.00, 202.50),
-(1, 4, 2.00, 20.00, 40.00),
--- Order 2: 1 load Heavy Items / Comforters = 220.00
-(2, 3, 1.00, 220.00, 220.00),
--- Order 3: 1 piece Dry Cleaning = 450.00
-(3, 5, 1.00, 450.00, 450.00),
--- Order 4 (Cancelled): 4.5 kg Wash, Dry, & Press bundle = 382.50 (non-refundable per shop policy)
-(4, 2, 4.50, 85.00, 382.50);
+DROP PROCEDURE IF EXISTS sp_generate_laundry_history $$
 
--- Payments (pay-first policy: payment recorded at drop-off/order creation)
--- amount_change = amount_paid - orders.total_amount (0.00 for exact digital/card payments)
-INSERT INTO payments (order_id, payment_method, reference_number, amount_paid, amount_change) VALUES
-(1, 'Cash',   NULL,               250.00, 7.50),
-(2, 'Online', 'GC-2026-88213421', 220.00, 0.00),
-(3, 'Card',   'CRD-773821094',    450.00, 0.00),
-(4, 'Cash',   NULL,               382.50, 0.00);
+CREATE PROCEDURE sp_generate_laundry_history()
+BEGIN
+    DECLARE i INT DEFAULT 1;
+    DECLARE target_records INT DEFAULT 250;
+    DECLARE rand_days INT;
+    DECLARE rand_hours INT;
+    DECLARE rand_minutes INT;
+    DECLARE order_datetime DATETIME;
+    DECLARE comp_datetime DATETIME;
+    DECLARE canc_datetime DATETIME;
+    DECLARE v_customer_id INT;
+    DECLARE v_user_id INT;
+    DECLARE v_status VARCHAR(20);
+    DECLARE v_claim_code VARCHAR(30);
+    DECLARE v_service_id INT;
+    DECLARE v_qty DECIMAL(10,2);
+    DECLARE v_price DECIMAL(10,2);
+    DECLARE v_subtotal DECIMAL(10,2);
+    DECLARE v_order_id INT;
+    DECLARE v_pay_method VARCHAR(20);
+    DECLARE v_ref_no VARCHAR(50);
+    DECLARE v_amount_paid DECIMAL(10,2);
+    DECLARE v_amount_change DECIMAL(10,2);
+
+    WHILE i <= target_records DO
+        -- Random date between 365 days ago and today
+        SET rand_days = FLOOR(RAND() * 365);
+        SET rand_hours = FLOOR(RAND() * 24);
+        SET rand_minutes = FLOOR(RAND() * 60);
+        
+        -- Subtract random days from the current timestamp (Now)
+        SET order_datetime = DATE_SUB(NOW(), INTERVAL rand_days DAY);
+        SET order_datetime = DATE_ADD(order_datetime, INTERVAL rand_hours HOUR);
+        SET order_datetime = DATE_ADD(order_datetime, INTERVAL rand_minutes MINUTE);
+
+        -- Determine status
+        IF rand_days > 7 THEN
+            IF RAND() < 0.90 THEN
+                SET v_status = 'Released';
+                SET comp_datetime = DATE_ADD(order_datetime, INTERVAL FLOOR(1 + RAND() * 3) DAY);
+                SET canc_datetime = NULL;
+            ELSE
+                SET v_status = 'Cancelled';
+                SET comp_datetime = NULL;
+                SET canc_datetime = DATE_ADD(order_datetime, INTERVAL FLOOR(1 + RAND() * 5) HOUR);
+            END IF;
+        ELSE
+            SET v_status = ELT(1 + FLOOR(RAND() * 5), 'Received', 'In Progress', 'Ready', 'Released', 'Cancelled');
+            IF v_status = 'Released' THEN
+                SET comp_datetime = DATE_ADD(order_datetime, INTERVAL 1 DAY);
+                SET canc_datetime = NULL;
+            ELSEIF v_status = 'Cancelled' THEN
+                SET comp_datetime = NULL;
+                SET canc_datetime = DATE_ADD(order_datetime, INTERVAL 2 HOUR);
+            ELSE
+                SET comp_datetime = NULL;
+                SET canc_datetime = NULL;
+            END IF;
+        END IF;
+
+        -- Random customer from ID 1 to 10
+        SET v_customer_id = 1 + FLOOR(RAND() * 10);
+        -- Random staff user (2 to 4)
+        SET v_user_id = 2 + FLOOR(RAND() * 3);
+        SET v_claim_code = CONCAT('LRY-', YEAR(order_datetime), '-', LPAD(i + 500, 4, '0'));
+
+        -- Random service (1 to 5)
+        SET v_service_id = 1 + FLOOR(RAND() * 5);
+        
+        IF v_service_id = 1 THEN SET v_price = 45.00; SET v_qty = ROUND(2.0 + (RAND() * 5.0), 2);
+        ELSEIF v_service_id = 2 THEN SET v_price = 85.00; SET v_qty = ROUND(2.0 + (RAND() * 5.0), 2);
+        ELSEIF v_service_id = 3 THEN SET v_price = 220.00; SET v_qty = 1.00;
+        ELSEIF v_service_id = 4 THEN SET v_price = 20.00; SET v_qty = FLOOR(1 + RAND() * 4);
+        ELSE SET v_price = 450.00; SET v_qty = 1.00;
+        END IF;
+
+        SET v_subtotal = ROUND(v_qty * v_price, 2);
+
+        -- Insert Order Header
+        INSERT INTO orders (customer_id, user_id, claim_code, order_status, total_amount, created_at, completed_at, cancelled_at)
+        VALUES (v_customer_id, v_user_id, v_claim_code, v_status, v_subtotal, order_datetime, comp_datetime, canc_datetime);
+
+        SET v_order_id = LAST_INSERT_ID();
+
+        -- Insert Order Line Item
+        INSERT INTO order_items (order_id, service_id, quantity, unit_price_at_time, subtotal)
+        VALUES (v_order_id, v_service_id, v_qty, v_price, v_subtotal);
+
+        -- Insert Payment Ledger Entry (Cash or Online only)
+        SET v_pay_method = ELT(1 + FLOOR(RAND() * 2), 'Cash', 'Online');
+        IF v_pay_method = 'Cash' THEN
+            SET v_ref_no = NULL;
+            SET v_amount_paid = v_subtotal + ELT(1 + FLOOR(RAND() * 4), 0.00, 10.00, 20.00, 50.00);
+            SET v_amount_change = ROUND(v_amount_paid - v_subtotal, 2);
+        ELSE
+            SET v_ref_no = CONCAT('GC-', FLOOR(100000 + RAND() * 900000));
+            SET v_amount_paid = v_subtotal;
+            SET v_amount_change = 0.00;
+        END IF;
+
+        INSERT INTO payments (order_id, payment_method, reference_number, amount_paid, amount_change)
+        VALUES (v_order_id, v_pay_method, v_ref_no, v_amount_paid, v_amount_change);
+
+        SET i = i + 1;
+    END WHILE;
+END $$
+
+DELIMITER ;
+
+-- Execute the generator
+CALL sp_generate_laundry_history();
+
+-- Clean up procedure
+DROP PROCEDURE sp_generate_laundry_history;

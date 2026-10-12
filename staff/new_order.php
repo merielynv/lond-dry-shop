@@ -26,12 +26,12 @@ require_once __DIR__ . '/../includes/db.php';
 
 $errorMessages = [
     'csrf'       => 'Your session has expired. Please review the order and try again.',
-    'customer'   => 'Please provide the customer\'s full name and a valid phone number.',
+    'customer'   => 'Please select an existing customer or register a new one before placing the order.',
     'items'      => 'Please add at least one service to the order before proceeding.',
     'service'    => 'One of the selected services is no longer available. Please rebuild the order.',
     'quantity'   => 'Every line item needs a quantity greater than zero.',
     'payment'    => 'Please select a payment method.',
-    'reference'  => 'A reference number is required for Card or Online payments.',
+    'reference'  => 'A reference number is required for Online payments.',
     'underpaid'  => 'Amount paid is less than the order total. This shop operates on a pay-first basis.',
     'database'   => 'Unable to save this order right now. Please try again in a moment.',
 ];
@@ -166,34 +166,42 @@ $staffName = $_SESSION['full_name'] ?? 'Staff';
           <section class="order-card">
             <div class="order-card__head">
               <h2>1. Customer</h2>
-              <p>Search by phone number or name. New here? Just fill in the fields below.</p>
+              <p>Search for a returning customer, or register a new one.</p>
             </div>
+
+            <input type="hidden" name="customer_id" id="customerId" value="">
 
             <div class="form-field">
               <label for="customerSearch">Search existing customer</label>
-              <div class="lookup-box">
-                <svg viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27a6.5 6.5 0 1 0-.7.7l.27.28v.79l5 5L20.5 19l-5-5Zm-6 0a4.5 4.5 0 1 1 0-9 4.5 4.5 0 0 1 0 9Z"/></svg>
-                <input type="text" id="customerSearch" autocomplete="off" placeholder="e.g. 0917 or Juan Dela Cruz">
+              <div class="customer-search-row">
+                <div class="lookup-box">
+                  <svg viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27a6.5 6.5 0 1 0-.7.7l.27.28v.79l5 5L20.5 19l-5-5Zm-6 0a4.5 4.5 0 1 1 0-9 4.5 4.5 0 0 1 0 9Z"/></svg>
+                  <input type="text" id="customerSearch" autocomplete="off" placeholder="e.g. 0917 or Juan Dela Cruz">
+                </div>
+                <button type="button" class="secondary-button" id="newCustomerBtn">＋ New Customer</button>
               </div>
               <div class="lookup-results" id="lookupResults" hidden></div>
-              <small class="field-hint" id="customerFoundHint" hidden>✓ Existing customer selected &mdash; details filled in below. You can still edit them.</small>
             </div>
 
-            <div class="form-grid">
-              <div class="form-field form-field--full">
-                <label for="fullName">Full name *</label>
-                <input type="text" name="full_name" id="fullName" maxlength="100" required>
+            <!-- Shown until a customer is picked or registered -->
+            <div class="customer-empty" id="customerEmpty">
+              No customer selected yet. Search above, or register a new customer.
+            </div>
+
+            <!-- Shown once a customer is selected -->
+            <div class="customer-selected" id="customerSelected" hidden>
+              <span class="customer-selected__avatar" id="selectedAvatar">?</span>
+              <div class="customer-selected__info">
+                <strong id="selectedName">&mdash;</strong>
+                <span id="selectedPhone">&mdash;</span>
+                <span id="selectedAddress">&mdash;</span>
               </div>
-              <div class="form-field">
-                <label for="phoneNumber">Phone number *</label>
-                <input type="text" name="phone_number" id="phoneNumber" maxlength="20" inputmode="tel" placeholder="09XXXXXXXXX" pattern="[0-9+\-\s]{7,20}" required>
-                <small class="field-hint" id="phoneError"></small>
-              </div>
-              <div class="form-field form-field--full">
-                <label for="address">Address <span class="optional-tag">(optional)</span></label>
-                <input type="text" name="address" id="address" maxlength="255">
+              <div class="customer-selected__actions">
+                <button type="button" class="secondary-button" id="editCustomerBtn">Edit details</button>
+                <button type="button" class="link-button" id="changeCustomerBtn">Change</button>
               </div>
             </div>
+            <small class="field-hint" id="customerSavedHint" hidden></small>
           </section>
 
           <!-- Service & Quantity Encoding -->
@@ -286,7 +294,6 @@ $staffName = $_SESSION['full_name'] ?? 'Staff';
               <label for="paymentMethod">Payment method *</label>
               <select name="payment_method" id="paymentMethod">
                 <option value="Cash">Cash</option>
-                <option value="Card">Card</option>
                 <option value="Online">Online</option>
               </select>
             </div>
@@ -316,6 +323,110 @@ $staffName = $_SESSION['full_name'] ?? 'Staff';
     </form>
 
   </main>
+</div>
+
+<!-- ===================== Customer Details Modal (add / edit) ===================== -->
+<div class="staff-modal" id="customerModal" aria-hidden="true">
+  <div class="staff-modal__backdrop" data-modal-close></div>
+  <div class="staff-modal__dialog customer-dialog" role="dialog" aria-modal="true" aria-labelledby="customerModalTitle">
+    <div class="staff-modal__head">
+      <div>
+        <span class="modal-eyebrow" id="customerModalEyebrow">Customer</span>
+        <h2 id="customerModalTitle">New Customer</h2>
+        <p id="customerModalDesc">Fields marked * are required.</p>
+      </div>
+      <button type="button" class="modal-close" data-modal-close aria-label="Close">&times;</button>
+    </div>
+
+    <form id="customerForm" novalidate>
+      <input type="hidden" name="csrf_token" value="<?= h(csrfToken()) ?>">
+      <input type="hidden" name="action" id="customerFormAction" value="create">
+      <input type="hidden" name="customer_id" id="customerFormId" value="">
+
+      <p class="form-section-label">Name</p>
+      <div class="form-grid form-grid--tight">
+        <div class="form-field">
+          <label for="cLastName">Last name *</label>
+          <input type="text" name="last_name" id="cLastName" maxlength="50" autocomplete="off">
+          <small class="field-hint" data-error-for="last_name"></small>
+        </div>
+        <div class="form-field">
+          <label for="cFirstName">First name *</label>
+          <input type="text" name="first_name" id="cFirstName" maxlength="50" autocomplete="off">
+          <small class="field-hint" data-error-for="first_name"></small>
+        </div>
+        <div class="form-field">
+          <label for="cMiddle">Middle initial <span class="optional-tag">(optional)</span></label>
+          <input type="text" name="middle_initial" id="cMiddle" maxlength="3" placeholder="e.g. D" autocomplete="off">
+          <small class="field-hint" data-error-for="middle_initial"></small>
+        </div>
+        <div class="form-field">
+          <label for="cSuffix">Suffix <span class="optional-tag">(optional)</span></label>
+          <select name="suffix" id="cSuffix">
+            <option value="">None</option>
+            <option value="Jr.">Jr.</option>
+            <option value="Sr.">Sr.</option>
+            <option value="II">II</option>
+            <option value="III">III</option>
+            <option value="IV">IV</option>
+            <option value="V">V</option>
+          </select>
+          <small class="field-hint" data-error-for="suffix"></small>
+        </div>
+      </div>
+      <p class="preview-line">Saved as: <strong id="namePreview">&mdash;</strong></p>
+
+      <p class="form-section-label">Contact</p>
+      <div class="form-grid form-grid--tight">
+        <div class="form-field form-field--full">
+          <label for="cPhone">Mobile number *</label>
+          <input type="text" name="phone_number" id="cPhone" maxlength="20" inputmode="tel" placeholder="09XXXXXXXXX" autocomplete="off">
+          <small class="field-hint" data-error-for="phone_number"></small>
+          <button type="button" class="link-button" id="useExistingBtn" hidden>Use that customer instead</button>
+        </div>
+      </div>
+
+      <p class="form-section-label">Address</p>
+      <div class="form-grid form-grid--tight">
+        <div class="form-field">
+          <label for="cProvince">Province *</label>
+          <input type="text" name="province" id="cProvince" list="provinceList" maxlength="100" autocomplete="off">
+          <small class="field-hint" data-error-for="province"></small>
+        </div>
+        <div class="form-field">
+          <label for="cCity">City / Municipality *</label>
+          <input type="text" name="city" id="cCity" list="cityList" maxlength="100" autocomplete="off">
+          <small class="field-hint" data-error-for="city"></small>
+        </div>
+        <div class="form-field">
+          <label for="cBarangay">Barangay *</label>
+          <input type="text" name="barangay" id="cBarangay" list="barangayList" maxlength="100" autocomplete="off">
+          <small class="field-hint" data-error-for="barangay"></small>
+        </div>
+        <div class="form-field">
+          <label for="cStreet">Street / House no. <span class="optional-tag">(optional)</span></label>
+          <input type="text" name="street_address" id="cStreet" maxlength="150" autocomplete="off">
+          <small class="field-hint" data-error-for="street_address"></small>
+        </div>
+      </div>
+      <p class="preview-line">Saved as: <strong id="addressPreview">&mdash;</strong></p>
+
+      <datalist id="provinceList"></datalist>
+      <datalist id="cityList"></datalist>
+      <datalist id="barangayList"></datalist>
+
+      <p class="edit-note" id="customerEditNote" hidden>
+        Changes apply to this customer's record everywhere, including receipts and tracking for their past orders.
+      </p>
+
+      <div class="field-hint is-error customer-form-error" id="customerFormError" hidden></div>
+
+      <div class="modal-actions">
+        <button type="button" class="secondary-button" data-modal-close>Cancel</button>
+        <button type="submit" class="primary-button" id="customerSubmitBtn">Save Customer</button>
+      </div>
+    </form>
+  </div>
 </div>
 
 <!-- ===================== Confirmation Modal ("Double-Check") ===================== -->
