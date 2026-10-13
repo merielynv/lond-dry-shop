@@ -1,543 +1,459 @@
+/**
+ * LOND Dry Shop — Admin Customers page
+ *
+ * - Live search over the customer table
+ * - Add / Edit customer modal (same structured form as the staff New Order
+ *   modal: last name, first name, optional middle initial + suffix;
+ *   province, city/municipality, barangay, optional street)
+ *   Saves through admin/customer_action.php (AJAX). The server re-checks
+ *   every rule — the checks here are only a first line of defense.
+ * - View customer modal
+ * - Delete customer modal
+ */
 (function () {
     'use strict';
+
+    function $(id) { return document.getElementById(id); }
+
+    /* =========================================================
+       LOCATION SUGGESTIONS (edit these lists to add more places)
+       Inputs stay free-text, so any place can still be typed.
+       ========================================================= */
+
+    var DEFAULT_PROVINCE = 'Laguna';
+    var DEFAULT_CITY = 'City of Cabuyao';
+
+    var LOCATIONS = {
+        'Laguna': {
+            cities: [
+                'City of Biñan', 'City of Cabuyao', 'City of Calamba', 'City of San Pablo',
+                'City of San Pedro', 'City of Santa Rosa',
+                'Alaminos', 'Bay', 'Calauan', 'Cavinti', 'Famy', 'Kalayaan', 'Liliw', 'Los Baños',
+                'Luisiana', 'Lumban', 'Mabitac', 'Magdalena', 'Majayjay', 'Nagcarlan', 'Paete',
+                'Pagsanjan', 'Pakil', 'Pangil', 'Pila', 'Rizal', 'Santa Cruz', 'Santa Maria',
+                'Siniloan', 'Victoria'
+            ],
+            barangays: {
+                'City of Cabuyao': [
+                    'Baclaran', 'Banay-banay', 'Banlic', 'Bigaa', 'Butong', 'Casile', 'Diezmo',
+                    'Gulod', 'Mamatid', 'Marinig', 'Niugan', 'Pittland', 'Pulo', 'Sala',
+                    'San Isidro', 'Poblacion Uno', 'Poblacion Dos', 'Poblacion Tres'
+                ]
+            }
+        }
+    };
+    var EXTRA_PROVINCES = ['Batangas', 'Cavite', 'Quezon', 'Rizal', 'Metro Manila'];
 
     /* =========================================================
        CUSTOMER SEARCH
        ========================================================= */
 
-    const search =
-        document.getElementById('customerSearch');
-
-    const rows =
-        document.querySelectorAll('.customer-row');
-
-    const noResults =
-        document.getElementById('customersNoResults');
-
+    var search = $('customerSearch');
+    var rows = document.querySelectorAll('.customer-row');
+    var noResults = $('customersNoResults');
 
     function filterCustomers() {
-
-        const searchText =
-            search.value.trim().toLowerCase();
-
-        let visibleCount = 0;
-
+        var searchText = search.value.trim().toLowerCase();
+        var visibleCount = 0;
 
         rows.forEach(function (row) {
+            var searchData = row.dataset.search || '';
 
-            const searchData =
-                row.dataset.search;
-
-
-            if (
-                searchText === '' ||
-                searchData.indexOf(searchText) !== -1
-            ) {
-
+            if (searchText === '' || searchData.indexOf(searchText) !== -1) {
                 row.style.display = '';
-
                 visibleCount++;
-
             } else {
-
                 row.style.display = 'none';
-
             }
-
         });
-
 
         if (noResults) {
-
-            if (visibleCount === 0 && rows.length > 0) {
-
-                noResults.style.display = 'block';
-
-            } else {
-
-                noResults.style.display = 'none';
-
-            }
-
+            noResults.style.display =
+                (visibleCount === 0 && rows.length > 0) ? 'block' : 'none';
         }
-
     }
-
 
     if (search) {
-
-        search.addEventListener('input', function () {
-
-            filterCustomers();
-
-        });
-
+        search.addEventListener('input', filterCustomers);
     }
 
+    /* =========================================================
+       GENERIC MODAL HELPERS
+       ========================================================= */
+
+    function openModal(modal) {
+        modal.classList.add('is-open');
+        modal.setAttribute('aria-hidden', 'false');
+        document.body.style.overflow = 'hidden';
+    }
+
+    function closeModal(modal) {
+        modal.classList.remove('is-open');
+        modal.setAttribute('aria-hidden', 'true');
+
+        if (!document.querySelector('.customer-modal.is-open')) {
+            document.body.style.overflow = '';
+        }
+    }
 
     /* =========================================================
        ADD / EDIT CUSTOMER MODAL
        ========================================================= */
 
-    const customerModal =
-        document.getElementById('customerModal');
+    var customerModal = $('customerModal');
+    var customerForm = $('customerForm');
+    var customerFormAction = $('customerFormAction');
+    var customerId = $('customerId');
+    var customerModalEyebrow = $('customerModalEyebrow');
+    var customerModalTitle = $('customerModalTitle');
+    var customerModalDescription = $('customerModalDescription');
+    var customerEditNote = $('customerEditNote');
+    var customerFormError = $('customerFormError');
+    var customerSubmit = $('customerSubmit');
 
-    const customerModalTitle =
-        document.getElementById('customerModalTitle');
+    var namePreview = $('namePreview');
+    var addressPreview = $('addressPreview');
 
-    const customerModalDescription =
-        document.getElementById('customerModalDescription');
+    var cLastName = $('cLastName');
+    var cFirstName = $('cFirstName');
+    var cMiddle = $('cMiddle');
+    var cSuffix = $('cSuffix');
+    var cPhone = $('cPhone');
+    var cProvince = $('cProvince');
+    var cCity = $('cCity');
+    var cBarangay = $('cBarangay');
+    var cStreet = $('cStreet');
 
-    const customerFormAction =
-        document.getElementById('customerFormAction');
+    /* ---------- Name / address preview (mirrors customer_action.php) ---------- */
 
-    const customerId =
-        document.getElementById('customerId');
+    function cleanInitial(value) {
+        return value.replace(/[^A-Za-zÀ-ÿ]/g, '').toUpperCase();
+    }
 
-    const fullName =
-        document.getElementById('fullName');
+    function composeFullName(first, middle, last, suffix) {
+        var parts = [first];
+        if (middle) parts.push(middle + '.');
+        parts.push(last);
+        if (suffix) parts.push(suffix);
+        return parts.filter(Boolean).join(' ').replace(/\s+/g, ' ').trim();
+    }
 
-    const phoneNumber =
-        document.getElementById('phoneNumber');
+    function composeAddress(street, barangay, city, province) {
+        var parts = [];
+        if (street) parts.push(street);
+        if (barangay) parts.push(/^(brgy|barangay)\b/i.test(barangay) ? barangay : 'Brgy. ' + barangay);
+        if (city) parts.push(city);
+        if (province) parts.push(province);
+        return parts.join(', ');
+    }
 
-    const address =
-        document.getElementById('address');
+    function updatePreviews() {
+        var name = composeFullName(
+            cFirstName.value.trim(),
+            cleanInitial(cMiddle.value),
+            cLastName.value.trim(),
+            cSuffix.value
+        );
+        var address = composeAddress(
+            cStreet.value.trim(), cBarangay.value.trim(), cCity.value.trim(), cProvince.value.trim()
+        );
+        namePreview.textContent = name || '—';
+        addressPreview.textContent = address || '—';
+    }
 
-    const customerSubmit =
-        document.getElementById('customerSubmit');
+    /* ---------- Location datalists ---------- */
 
+    function fillDatalist(listId, values) {
+        var list = $(listId);
+        list.innerHTML = '';
+        values.forEach(function (value) {
+            var option = document.createElement('option');
+            option.value = value;
+            list.appendChild(option);
+        });
+    }
+
+    function refreshLocationLists() {
+        fillDatalist('provinceList', Object.keys(LOCATIONS).concat(EXTRA_PROVINCES));
+
+        var province = LOCATIONS[cProvince.value.trim()];
+        fillDatalist('cityList', province ? province.cities : []);
+
+        var barangays = province && province.barangays[cCity.value.trim()];
+        fillDatalist('barangayList', barangays || []);
+    }
+
+    [cProvince, cCity].forEach(function (input) {
+        input.addEventListener('input', refreshLocationLists);
+    });
+
+    [cLastName, cFirstName, cMiddle, cSuffix, cStreet, cBarangay, cCity, cProvince].forEach(function (input) {
+        input.addEventListener('input', updatePreviews);
+        input.addEventListener('change', updatePreviews);
+    });
+
+    /* ---------- Error display ---------- */
+
+    function clearFormErrors() {
+        customerForm.querySelectorAll('[data-error-for]').forEach(function (el) {
+            el.textContent = '';
+            el.classList.remove('is-error');
+        });
+        customerForm.querySelectorAll('.has-error').forEach(function (el) {
+            el.classList.remove('has-error');
+        });
+        customerFormError.hidden = true;
+        customerFormError.textContent = '';
+    }
+
+    function showFieldErrors(errors) {
+        Object.keys(errors).forEach(function (field) {
+            var hint = customerForm.querySelector('[data-error-for="' + field + '"]');
+            var input = customerForm.querySelector('[name="' + field + '"]');
+            if (hint) {
+                hint.textContent = errors[field];
+                hint.classList.add('is-error');
+            }
+            if (input) input.classList.add('has-error');
+        });
+    }
+
+    /* ---------- Open (add or edit) ---------- */
 
     function openCustomerModal(editData) {
-
-        customerModal.classList.add('is-open');
-
-        customerModal.setAttribute(
-            'aria-hidden',
-            'false'
-        );
-
-        document.body.style.overflow = 'hidden';
-
+        clearFormErrors();
+        customerForm.reset();
 
         if (editData) {
-
-            customerModalTitle.textContent =
-                'Edit Customer';
-
+            customerFormAction.value = 'update';
+            customerId.value = editData.id;
+            customerModalEyebrow.textContent = 'Edit customer';
+            customerModalTitle.textContent = 'Edit Customer Details';
             customerModalDescription.textContent =
-                'Update the customer contact information.';
+                'Update a phone number, an address, or fix a spelling mistake.';
+            customerEditNote.hidden = false;
+            customerSubmit.textContent = 'Save Changes';
 
-            customerFormAction.value =
-                'edit';
-
-            customerId.value =
-                editData.id;
-
-            fullName.value =
-                editData.name;
-
-            phoneNumber.value =
-                editData.phone;
-
-            address.value =
-                editData.address;
-
-            customerSubmit.textContent =
-                'Save Changes';
-
+            cLastName.value = editData.lastName || '';
+            cFirstName.value = editData.firstName || '';
+            cMiddle.value = editData.middle || '';
+            cSuffix.value = editData.suffix || '';
+            cPhone.value = editData.phone || '';
+            cProvince.value = editData.province || '';
+            cCity.value = editData.city || '';
+            cBarangay.value = editData.barangay || '';
+            cStreet.value = editData.street || '';
         } else {
+            customerFormAction.value = 'create';
+            customerId.value = '';
+            customerModalEyebrow.textContent = 'New customer';
+            customerModalTitle.textContent = 'Register New Customer';
+            customerModalDescription.textContent = 'Fields marked * are required.';
+            customerEditNote.hidden = true;
+            customerSubmit.textContent = 'Save Customer';
 
-            customerModalTitle.textContent =
-                'Add Customer';
-
-            customerModalDescription.textContent =
-                'Add contact information for a new customer.';
-
-            customerFormAction.value =
-                'add';
-
-            customerId.value =
-                '';
-
-            fullName.value =
-                '';
-
-            phoneNumber.value =
-                '';
-
-            address.value =
-                '';
-
-            customerSubmit.textContent =
-                'Add Customer';
-
+            cProvince.value = DEFAULT_PROVINCE;
+            cCity.value = DEFAULT_CITY;
         }
 
+        customerSubmit.disabled = false;
 
-        setTimeout(function () {
+        refreshLocationLists();
+        updatePreviews();
+        openModal(customerModal);
 
-            fullName.focus();
-
-        }, 50);
-
+        setTimeout(function () { cLastName.focus(); }, 50);
     }
 
-
-    function closeCustomerModal() {
-
-        customerModal.classList.remove('is-open');
-
-        customerModal.setAttribute(
-            'aria-hidden',
-            'true'
-        );
-
-        document.body.style.overflow = '';
-
-    }
-
-
-    /* =========================================================
-       ADD CUSTOMER
-       ========================================================= */
-
-    const openCustomerButton =
-        document.getElementById('openCustomerModal');
-
+    var openCustomerButton = $('openCustomerModal');
 
     if (openCustomerButton) {
-
-        openCustomerButton.addEventListener(
-            'click',
-            function () {
-
-                openCustomerModal(null);
-
-            }
-        );
-
+        openCustomerButton.addEventListener('click', function () {
+            openCustomerModal(null);
+        });
     }
 
+    document.querySelectorAll('.customer-edit').forEach(function (button) {
+        button.addEventListener('click', function () {
+            openCustomerModal({
+                id: button.dataset.id,
+                lastName: button.dataset.lastName,
+                firstName: button.dataset.firstName,
+                middle: button.dataset.middle,
+                suffix: button.dataset.suffix,
+                phone: button.dataset.phone,
+                province: button.dataset.province,
+                city: button.dataset.city,
+                barangay: button.dataset.barangay,
+                street: button.dataset.street
+            });
+        });
+    });
 
-    /* =========================================================
-       EDIT CUSTOMER
-       ========================================================= */
+    document.querySelectorAll('.customer-modal-close').forEach(function (button) {
+        button.addEventListener('click', function () {
+            closeModal(customerModal);
+        });
+    });
 
-    document.querySelectorAll('.customer-edit').forEach(
-        function (button) {
+    /* ---------- Client-side checks (the server re-validates everything) ---------- */
 
-            button.addEventListener(
-                'click',
-                function () {
+    function validateCustomerForm() {
+        var errors = {};
+        var namePattern = /^[A-Za-zÀ-ÿ][A-Za-zÀ-ÿ\s.'’\-]*$/;
 
-                    openCustomerModal({
+        if (!cLastName.value.trim()) errors.last_name = 'Last name is required.';
+        else if (!namePattern.test(cLastName.value.trim())) errors.last_name = 'Use letters only.';
 
-                        id: button.dataset.id,
+        if (!cFirstName.value.trim()) errors.first_name = 'First name is required.';
+        else if (!namePattern.test(cFirstName.value.trim())) errors.first_name = 'Use letters only.';
 
-                        name: button.dataset.name,
-
-                        phone: button.dataset.phone,
-
-                        address: button.dataset.address
-
-                    });
-
-                }
-            );
-
+        var mi = cleanInitial(cMiddle.value);
+        if (cMiddle.value.trim() && (mi.length < 1 || mi.length > 2)) {
+            errors.middle_initial = 'Middle initial should be 1-2 letters (e.g. D).';
         }
-    );
 
+        var phone = cPhone.value.replace(/[\s\-()]/g, '');
+        if (/^\+639\d{9}$/.test(phone)) phone = '0' + phone.slice(3);
+        if (!cPhone.value.trim()) errors.phone_number = 'Phone number is required.';
+        else if (!/^09\d{9}$/.test(phone)) errors.phone_number = 'Enter a valid mobile number, e.g. 09171234567.';
 
-    /* =========================================================
-       CLOSE ADD / EDIT MODAL
-       ========================================================= */
+        if (!cProvince.value.trim()) errors.province = 'Province is required.';
+        if (!cCity.value.trim()) errors.city = 'City / Municipality is required.';
+        if (!cBarangay.value.trim()) errors.barangay = 'Barangay is required.';
 
-    document.querySelectorAll('.customer-modal-close').forEach(
-        function (button) {
+        return errors;
+    }
 
-            button.addEventListener(
-                'click',
-                function () {
+    /* ---------- Submit (AJAX → admin/customer_action.php) ---------- */
 
-                    closeCustomerModal();
+    function resetSubmitButton() {
+        customerSubmit.disabled = false;
+        customerSubmit.textContent =
+            customerFormAction.value === 'update' ? 'Save Changes' : 'Save Customer';
+    }
 
-                }
-            );
+    if (customerForm) {
+        customerForm.addEventListener('submit', function (event) {
+            event.preventDefault();
+            clearFormErrors();
 
-        }
-    );
+            var errors = validateCustomerForm();
+            if (Object.keys(errors).length > 0) {
+                showFieldErrors(errors);
+                return;
+            }
 
+            var isEdit = customerFormAction.value === 'update';
+
+            customerSubmit.disabled = true;
+            customerSubmit.textContent = 'Saving...';
+
+            fetch('customer_action.php', {
+                method: 'POST',
+                body: new FormData(customerForm),
+                credentials: 'same-origin'
+            })
+                .then(function (response) { return response.json(); })
+                .then(function (data) {
+                    if (data.ok) {
+                        // Reload so the table, stats and success banner are all fresh.
+                        window.location.href = 'customers.php?success=' + (isEdit ? 'updated' : 'added');
+                        return;
+                    }
+
+                    if (data.errors) showFieldErrors(data.errors);
+
+                    if (!data.errors) {
+                        customerFormError.textContent =
+                            data.message || 'Unable to save the customer. Please try again.';
+                        customerFormError.hidden = false;
+                    }
+
+                    resetSubmitButton();
+                })
+                .catch(function () {
+                    customerFormError.textContent =
+                        'Network problem — please check your connection and try again.';
+                    customerFormError.hidden = false;
+                    resetSubmitButton();
+                });
+        });
+    }
 
     /* =========================================================
        VIEW CUSTOMER MODAL
        ========================================================= */
 
-    const viewCustomerModal =
-        document.getElementById('viewCustomerModal');
-
-    const viewCustomerName =
-        document.getElementById('viewCustomerName');
-
-    const viewCustomerId =
-        document.getElementById('viewCustomerId');
-
-    const viewCustomerAvatar =
-        document.getElementById('viewCustomerAvatar');
-
-    const viewCustomerPhone =
-        document.getElementById('viewCustomerPhone');
-
-    const viewCustomerAddress =
-        document.getElementById('viewCustomerAddress');
-
-    const viewCustomerOrders =
-        document.getElementById('viewCustomerOrders');
-
-    const viewCustomerValue =
-        document.getElementById('viewCustomerValue');
-
-    const viewCustomerLastOrder =
-        document.getElementById('viewCustomerLastOrder');
-
-    const viewCustomerCreated =
-        document.getElementById('viewCustomerCreated');
-
+    var viewCustomerModal = $('viewCustomerModal');
+    var viewCustomerName = $('viewCustomerName');
+    var viewCustomerId = $('viewCustomerId');
+    var viewCustomerAvatar = $('viewCustomerAvatar');
+    var viewCustomerPhone = $('viewCustomerPhone');
+    var viewCustomerAddress = $('viewCustomerAddress');
+    var viewCustomerOrders = $('viewCustomerOrders');
+    var viewCustomerValue = $('viewCustomerValue');
+    var viewCustomerLastOrder = $('viewCustomerLastOrder');
+    var viewCustomerCreated = $('viewCustomerCreated');
 
     function openViewCustomer(button) {
+        var name = button.dataset.name || '';
 
-        const name =
-            button.dataset.name;
+        viewCustomerName.textContent = name;
+        viewCustomerId.textContent = 'Customer #' + button.dataset.id;
+        viewCustomerAvatar.textContent = name.charAt(0).toUpperCase();
+        viewCustomerPhone.textContent = button.dataset.phone;
+        viewCustomerAddress.textContent = button.dataset.address || 'No address provided';
+        viewCustomerOrders.textContent = button.dataset.orders;
+        viewCustomerValue.textContent = '₱' + button.dataset.value;
+        viewCustomerLastOrder.textContent = button.dataset.lastOrder;
+        viewCustomerCreated.textContent = button.dataset.created;
 
-
-        viewCustomerName.textContent =
-            name;
-
-        viewCustomerId.textContent =
-            'Customer #' + button.dataset.id;
-
-        viewCustomerAvatar.textContent =
-            name.charAt(0).toUpperCase();
-
-        viewCustomerPhone.textContent =
-            button.dataset.phone;
-
-        viewCustomerAddress.textContent =
-            button.dataset.address ||
-            'No address provided';
-
-        viewCustomerOrders.textContent =
-            button.dataset.orders;
-
-        viewCustomerValue.textContent =
-            '₱' + button.dataset.value;
-
-        viewCustomerLastOrder.textContent =
-            button.dataset.lastOrder;
-
-        viewCustomerCreated.textContent =
-            button.dataset.created;
-
-
-        viewCustomerModal.classList.add('is-open');
-
-        viewCustomerModal.setAttribute(
-            'aria-hidden',
-            'false'
-        );
-
-        document.body.style.overflow = 'hidden';
-
+        openModal(viewCustomerModal);
     }
 
+    document.querySelectorAll('.customer-view').forEach(function (button) {
+        button.addEventListener('click', function () {
+            openViewCustomer(button);
+        });
+    });
 
-    document.querySelectorAll('.customer-view').forEach(
-        function (button) {
-
-            button.addEventListener(
-                'click',
-                function () {
-
-                    openViewCustomer(button);
-
-                }
-            );
-
-        }
-    );
-
-
-    function closeViewCustomer() {
-
-        viewCustomerModal.classList.remove('is-open');
-
-        viewCustomerModal.setAttribute(
-            'aria-hidden',
-            'true'
-        );
-
-        document.body.style.overflow = '';
-
-    }
-
-
-    document.querySelectorAll('.customer-view-close').forEach(
-        function (button) {
-
-            button.addEventListener(
-                'click',
-                function () {
-
-                    closeViewCustomer();
-
-                }
-            );
-
-        }
-    );
-
+    document.querySelectorAll('.customer-view-close').forEach(function (button) {
+        button.addEventListener('click', function () {
+            closeModal(viewCustomerModal);
+        });
+    });
 
     /* =========================================================
        DELETE CUSTOMER MODAL
        ========================================================= */
 
-    const deleteModal =
-        document.getElementById('deleteCustomerModal');
+    var deleteModal = $('deleteCustomerModal');
+    var deleteCustomerId = $('deleteCustomerId');
+    var deleteCustomerName = $('deleteCustomerName');
 
-    const deleteCustomerId =
-        document.getElementById('deleteCustomerId');
+    document.querySelectorAll('.customer-delete').forEach(function (button) {
+        button.addEventListener('click', function () {
+            deleteCustomerId.value = button.dataset.id;
+            deleteCustomerName.textContent = button.dataset.name;
+            openModal(deleteModal);
+        });
+    });
 
-    const deleteCustomerName =
-        document.getElementById('deleteCustomerName');
-
-
-    function openDeleteModal(button) {
-
-        deleteCustomerId.value =
-            button.dataset.id;
-
-        deleteCustomerName.textContent =
-            button.dataset.name;
-
-
-        deleteModal.classList.add('is-open');
-
-        deleteModal.setAttribute(
-            'aria-hidden',
-            'false'
-        );
-
-        document.body.style.overflow = 'hidden';
-
-    }
-
-
-    document.querySelectorAll('.customer-delete').forEach(
-        function (button) {
-
-            button.addEventListener(
-                'click',
-                function () {
-
-                    openDeleteModal(button);
-
-                }
-            );
-
-        }
-    );
-
-
-    function closeDeleteModal() {
-
-        deleteModal.classList.remove('is-open');
-
-        deleteModal.setAttribute(
-            'aria-hidden',
-            'true'
-        );
-
-        document.body.style.overflow = '';
-
-    }
-
-
-    document.querySelectorAll('.delete-modal-close').forEach(
-        function (button) {
-
-            button.addEventListener(
-                'click',
-                function () {
-
-                    closeDeleteModal();
-
-                }
-            );
-
-        }
-    );
-
+    document.querySelectorAll('.delete-modal-close').forEach(function (button) {
+        button.addEventListener('click', function () {
+            closeModal(deleteModal);
+        });
+    });
 
     /* =========================================================
        ESC KEY
        ========================================================= */
 
-    document.addEventListener(
-        'keydown',
-        function (event) {
+    document.addEventListener('keydown', function (event) {
+        if (event.key !== 'Escape') return;
 
-            if (event.key !== 'Escape') {
-                return;
-            }
-
-
-            if (customerModal.classList.contains('is-open')) {
-
-                closeCustomerModal();
-
-            }
-
-
-            if (viewCustomerModal.classList.contains('is-open')) {
-
-                closeViewCustomer();
-
-            }
-
-
-            if (deleteModal.classList.contains('is-open')) {
-
-                closeDeleteModal();
-
-            }
-
-        }
-    );
-
-
-    /* =========================================================
-       PREVENT DOUBLE SUBMIT
-       ========================================================= */
-
-    const customerForm =
-        document.getElementById('customerForm');
-
-
-    if (customerForm) {
-
-        customerForm.addEventListener(
-            'submit',
-            function () {
-
-                customerSubmit.disabled = true;
-
-                customerSubmit.style.opacity = '0.7';
-
-                customerSubmit.style.cursor = 'wait';
-
-            }
-        );
-
-    }
+        document.querySelectorAll('.customer-modal.is-open').forEach(closeModal);
+    });
 
 })();

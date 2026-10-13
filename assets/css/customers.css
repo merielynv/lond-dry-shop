@@ -414,31 +414,51 @@
     cursor: pointer;
 }
 
-/* ---------- Form ---------- */
+/* ---------- Form (same look as the staff New Order customer modal) ---------- */
 
-.customer-form-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 15px;
+.customer-dialog {
+    width: min(640px, 100%);
 }
 
-.customer-form-field {
+.customer-dialog .form-section-label {
+    margin: 18px 0 10px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid #EDF3FA;
+    color: var(--deep-blue);
+    font-size: 0.72rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.customer-dialog .form-section-label:first-of-type {
+    margin-top: 0;
+}
+
+.customer-dialog .form-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+}
+
+.customer-dialog .form-field {
     display: flex;
     flex-direction: column;
     gap: 6px;
 }
 
-.customer-form-field--full {
+.customer-dialog .form-field--full {
     grid-column: 1 / -1;
 }
 
-.customer-form-field label {
+.customer-dialog .form-field label {
     color: var(--deep-blue);
     font-size: 0.78rem;
     font-weight: 800;
 }
 
-.customer-form-field input {
+.customer-dialog .form-field input,
+.customer-dialog .form-field select {
     width: 100%;
     height: 44px;
     box-sizing: border-box;
@@ -449,12 +469,70 @@
     background: #FBFDFF;
     color: var(--ink);
     font: inherit;
-    font-size: 0.82rem;
+    font-size: 0.85rem;
 }
 
-.customer-form-field input:focus {
+.customer-dialog .form-field input:focus,
+.customer-dialog .form-field select:focus {
     border-color: var(--sky-blue);
-    box-shadow: 0 0 0 3px rgba(52, 161, 255, 0.10);
+    box-shadow: 0 0 0 3px rgba(70, 165, 230, 0.12);
+}
+
+.customer-dialog .form-field input.has-error,
+.customer-dialog .form-field select.has-error {
+    border-color: var(--danger);
+    background: var(--danger-bg);
+}
+
+.optional-tag {
+    color: var(--ink-soft);
+    font-weight: 600;
+    text-transform: none;
+    font-size: 0.72rem;
+}
+
+.field-hint {
+    display: block;
+    min-height: 14px;
+    font-size: 0.74rem;
+    font-weight: 600;
+    color: var(--success-ink);
+}
+
+.field-hint.is-error {
+    color: var(--danger);
+}
+
+.field-hint[hidden] {
+    display: none;
+}
+
+.preview-line {
+    margin: 10px 0 0;
+    font-size: 0.78rem;
+    color: var(--ink-soft);
+}
+
+.preview-line strong {
+    color: var(--deep-blue);
+}
+
+.edit-note {
+    margin: 16px 0 0;
+    padding: 10px 12px;
+    border-radius: var(--radius-sm);
+    background: #FFF6DA;
+    color: #7A5B00;
+    font-size: 0.76rem;
+    line-height: 1.45;
+}
+
+.edit-note[hidden] {
+    display: none;
+}
+
+.customer-form-error {
+    margin-top: 12px;
 }
 
 .customer-modal-actions {
@@ -643,12 +721,12 @@
         width: 100%;
     }
 
-    .customer-form-grid,
+    .customer-dialog .form-grid,
     .customer-detail-grid {
         grid-template-columns: 1fr;
     }
 
-    .customer-form-field--full {
+    .customer-dialog .form-field--full {
         grid-column: auto;
     }
 }

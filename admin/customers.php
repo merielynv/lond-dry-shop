@@ -17,56 +17,28 @@ $messageType = 'success';
 /* -------------------------------------------------------------
    Add / Edit / Delete Customer
    ------------------------------------------------------------- */
+if (isset($_GET['success'])) {
+    $flashMessages = [
+        'added'   => 'Customer added successfully.',
+        'updated' => 'Customer updated successfully.',
+    ];
+    if (isset($flashMessages[$_GET['success']])) {
+        $message = $flashMessages[$_GET['success']];
+    }
+}
+
+/* Add / Edit now go through admin/customer_action.php (AJAX), exactly like
+   the staff modal. Only Delete is still handled on this page. */
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? '';
 
     try {
-        if ($action === 'add') {
-            $name = trim($_POST['full_name'] ?? '');
-            $phone = trim($_POST['phone_number'] ?? '');
-            $address = trim($_POST['address'] ?? '');
+        if ($action === 'delete') {
 
-            if ($name === '' || $phone === '') {
-                throw new Exception('Customer name and phone number are required.');
+            if (!verifyCsrfToken($_POST['csrf_token'] ?? null)) {
+                throw new Exception('Your session has expired. Please refresh the page and try again.');
             }
 
-            $stmt = $pdo->prepare(
-                "INSERT INTO customers (full_name, phone_number, address)
-                 VALUES (?, ?, ?)"
-            );
-            $stmt->execute([$name, $phone, $address !== '' ? $address : null]);
-
-            $message = 'Customer added successfully.';
-        }
-
-        elseif ($action === 'edit') {
-            $customerId = (int) ($_POST['customer_id'] ?? 0);
-            $name = trim($_POST['full_name'] ?? '');
-            $phone = trim($_POST['phone_number'] ?? '');
-            $address = trim($_POST['address'] ?? '');
-
-            if ($customerId <= 0 || $name === '' || $phone === '') {
-                throw new Exception('Customer name and phone number are required.');
-            }
-
-            $stmt = $pdo->prepare(
-                "UPDATE customers
-                    SET full_name = ?,
-                        phone_number = ?,
-                        address = ?
-                  WHERE customer_id = ?"
-            );
-            $stmt->execute([
-                $name,
-                $phone,
-                $address !== '' ? $address : null,
-                $customerId
-            ]);
-
-            $message = 'Customer updated successfully.';
-        }
-
-        elseif ($action === 'delete') {
             $customerId = (int) ($_POST['customer_id'] ?? 0);
 
             if ($customerId <= 0) {
@@ -77,9 +49,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
              * orders.customer_id uses ON DELETE RESTRICT,
              * so customers with order history cannot be deleted.
              */
-            $stmt = $pdo->prepare(
-                "SELECT COUNT(*) FROM orders WHERE customer_id = ?"
-            );
+            $stmt = $pdo->prepare("SELECT COUNT(*) FROM orders WHERE customer_id = ?");
             $stmt->execute([$customerId]);
             $orderCount = (int) $stmt->fetchColumn();
 
@@ -89,29 +59,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 );
             }
 
-            $stmt = $pdo->prepare(
-                "DELETE FROM customers WHERE customer_id = ?"
-            );
+            $stmt = $pdo->prepare("DELETE FROM customers WHERE customer_id = ?");
             $stmt->execute([$customerId]);
 
             $message = 'Customer deleted successfully.';
         }
-
     } catch (Throwable $e) {
         error_log('Customer management error: ' . $e->getMessage());
-
-        if ($e instanceof PDOException && $e->getCode() === '23000') {
-            $message = 'That phone number is already registered.';
-        } else {
-            $message = $e->getMessage();
-        }
-
+        $message = $e instanceof PDOException
+            ? 'A database error occurred. Please try again.'
+            : $e->getMessage();
         $messageType = 'error';
     }
 }
 
 /* -------------------------------------------------------------
    Customer list + order totals
+   (includes the structured name / address parts so the Edit
+   modal can be pre-filled without another request)
    ------------------------------------------------------------- */
 $customers = [];
 $customerError = null;
@@ -120,8 +85,16 @@ try {
     $stmt = $pdo->query(
         "SELECT
             c.customer_id,
+            c.first_name,
+            c.last_name,
+            c.middle_initial,
+            c.suffix,
             c.full_name,
             c.phone_number,
+            c.province,
+            c.city,
+            c.barangay,
+            c.street_address,
             c.address,
             c.created_at,
             COUNT(o.order_id) AS order_count,
@@ -136,13 +109,8 @@ try {
          FROM customers c
          LEFT JOIN orders o
             ON c.customer_id = o.customer_id
-         GROUP BY
-            c.customer_id,
-            c.full_name,
-            c.phone_number,
-            c.address,
-            c.created_at
-         ORDER BY c.full_name ASC"
+         GROUP BY c.customer_id
+         ORDER BY c.last_name ASC, c.first_name ASC"
     );
 
     $customers = $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -225,7 +193,7 @@ $adminInitial = strtoupper(substr(trim($adminName), 0, 1)) ?: 'A';
 
             <a href="services.php" class="admin-nav__link">
                 <svg viewBox="0 0 24 24"><path d="M12.9 2.1a3 3 0 0 0-2.83.8L2.9 10.06a3 3 0 0 0 0 4.24l6.8 6.8a3 3 0 0 0 4.24 0l7.16-7.17a3 3 0 0 0 .8-2.83l-1.06-4.9a3 3 0 0 0-2.29-2.29l-4.65-1Zm2.35 7.15a1.75 1.75 0 1 1 0-3.5 1.75 1.75 0 0 1 0 3.5Z"/></svg>
-                <span>Services<span>
+                <span>Services</span>
             </a>
 
             <a href="orders.php" class="admin-nav__link">
@@ -501,9 +469,15 @@ $adminInitial = strtoupper(substr(trim($adminName), 0, 1)) ?: 'A';
                                     <button type="button"
                                             class="customer-edit"
                                             data-id="<?= (int) $customer['customer_id'] ?>"
-                                            data-name="<?= h($customer['full_name']) ?>"
+                                            data-last-name="<?= h($customer['last_name']) ?>"
+                                            data-first-name="<?= h($customer['first_name']) ?>"
+                                            data-middle="<?= h($customer['middle_initial'] ?? '') ?>"
+                                            data-suffix="<?= h($customer['suffix'] ?? '') ?>"
                                             data-phone="<?= h($customer['phone_number']) ?>"
-                                            data-address="<?= h($customer['address'] ?? '') ?>"
+                                            data-province="<?= h($customer['province'] ?? '') ?>"
+                                            data-city="<?= h($customer['city'] ?? '') ?>"
+                                            data-barangay="<?= h($customer['barangay'] ?? '') ?>"
+                                            data-street="<?= h($customer['street_address'] ?? '') ?>"
                                             title="Edit customer">
 
                                         <svg viewBox="0 0 24 24">
@@ -567,89 +541,110 @@ $adminInitial = strtoupper(substr(trim($adminName), 0, 1)) ?: 'A';
 
     <div class="customer-modal__backdrop customer-modal-close"></div>
 
-    <div class="customer-modal__dialog">
+    <div class="customer-modal__dialog customer-dialog"
+         role="dialog"
+         aria-modal="true"
+         aria-labelledby="customerModalTitle">
 
         <div class="customer-modal__head">
 
             <div>
-                <span class="modal-eyebrow">Customer Directory</span>
-                <h2 id="customerModalTitle">Add Customer</h2>
-                <p id="customerModalDescription">
-                    Add contact information for a new customer.
-                </p>
+                <span class="modal-eyebrow" id="customerModalEyebrow">Customer</span>
+                <h2 id="customerModalTitle">Register New Customer</h2>
+                <p id="customerModalDescription">Fields marked * are required.</p>
             </div>
 
             <button type="button"
-                    class="modal-close customer-modal-close">
-                ×
+                    class="modal-close customer-modal-close"
+                    aria-label="Close">
+                &times;
             </button>
 
         </div>
 
 
-        <form method="post"
-              id="customerForm">
+        <form id="customerForm" novalidate>
 
-            <input type="hidden"
-                   name="action"
-                   id="customerFormAction"
-                   value="add">
+            <input type="hidden" name="csrf_token" value="<?= h(csrfToken()) ?>">
+            <input type="hidden" name="action" id="customerFormAction" value="create">
+            <input type="hidden" name="customer_id" id="customerId" value="">
 
-            <input type="hidden"
-                   name="customer_id"
-                   id="customerId"
-                   value="">
-
-
-            <div class="customer-form-grid">
-
-                <div class="customer-form-field customer-form-field--full">
-
-                    <label for="fullName">
-                        Full Name
-                    </label>
-
-                    <input type="text"
-                           id="fullName"
-                           name="full_name"
-                           maxlength="100"
-                           placeholder="Juan Dela Cruz"
-                           required>
-
+            <p class="form-section-label">Name</p>
+            <div class="form-grid">
+                <div class="form-field">
+                    <label for="cLastName">Last name *</label>
+                    <input type="text" name="last_name" id="cLastName" maxlength="50" autocomplete="off">
+                    <small class="field-hint" data-error-for="last_name"></small>
                 </div>
-
-
-                <div class="customer-form-field">
-
-                    <label for="phoneNumber">
-                        Phone Number
-                    </label>
-
-                    <input type="tel"
-                           id="phoneNumber"
-                           name="phone_number"
-                           maxlength="20"
-                           placeholder="09171234567"
-                           required>
-
+                <div class="form-field">
+                    <label for="cFirstName">First name *</label>
+                    <input type="text" name="first_name" id="cFirstName" maxlength="50" autocomplete="off">
+                    <small class="field-hint" data-error-for="first_name"></small>
                 </div>
-
-
-                <div class="customer-form-field">
-
-                    <label for="address">
-                        Address
-                    </label>
-
-                    <input type="text"
-                           id="address"
-                           name="address"
-                           placeholder="Brgy. Banay-banay, Cabuyao, Laguna">
-
+                <div class="form-field">
+                    <label for="cMiddle">Middle initial <span class="optional-tag">(optional)</span></label>
+                    <input type="text" name="middle_initial" id="cMiddle" maxlength="3" placeholder="e.g. D" autocomplete="off">
+                    <small class="field-hint" data-error-for="middle_initial"></small>
                 </div>
+                <div class="form-field">
+                    <label for="cSuffix">Suffix <span class="optional-tag">(optional)</span></label>
+                    <select name="suffix" id="cSuffix">
+                        <option value="">None</option>
+                        <option value="Jr.">Jr.</option>
+                        <option value="Sr.">Sr.</option>
+                        <option value="II">II</option>
+                        <option value="III">III</option>
+                        <option value="IV">IV</option>
+                        <option value="V">V</option>
+                    </select>
+                    <small class="field-hint" data-error-for="suffix"></small>
+                </div>
+            </div>
+            <p class="preview-line">Saved as: <strong id="namePreview">&mdash;</strong></p>
 
+            <p class="form-section-label">Contact</p>
+            <div class="form-grid">
+                <div class="form-field form-field--full">
+                    <label for="cPhone">Mobile number *</label>
+                    <input type="text" name="phone_number" id="cPhone" maxlength="20" inputmode="tel" placeholder="09XXXXXXXXX" autocomplete="off">
+                    <small class="field-hint" data-error-for="phone_number"></small>
+                </div>
             </div>
 
+            <p class="form-section-label">Address</p>
+            <div class="form-grid">
+                <div class="form-field">
+                    <label for="cProvince">Province *</label>
+                    <input type="text" name="province" id="cProvince" list="provinceList" maxlength="100" autocomplete="off">
+                    <small class="field-hint" data-error-for="province"></small>
+                </div>
+                <div class="form-field">
+                    <label for="cCity">City / Municipality *</label>
+                    <input type="text" name="city" id="cCity" list="cityList" maxlength="100" autocomplete="off">
+                    <small class="field-hint" data-error-for="city"></small>
+                </div>
+                <div class="form-field">
+                    <label for="cBarangay">Barangay *</label>
+                    <input type="text" name="barangay" id="cBarangay" list="barangayList" maxlength="100" autocomplete="off">
+                    <small class="field-hint" data-error-for="barangay"></small>
+                </div>
+                <div class="form-field">
+                    <label for="cStreet">Street / House no. <span class="optional-tag">(optional)</span></label>
+                    <input type="text" name="street_address" id="cStreet" maxlength="150" autocomplete="off">
+                    <small class="field-hint" data-error-for="street_address"></small>
+                </div>
+            </div>
+            <p class="preview-line">Saved as: <strong id="addressPreview">&mdash;</strong></p>
+
+            <datalist id="provinceList"></datalist>
+            <datalist id="cityList"></datalist>
+            <datalist id="barangayList"></datalist>
+
+            <p class="edit-note" id="customerEditNote" hidden>
+                Changes apply to this customer's record everywhere, including receipts and tracking for their past orders.
+            </p>
+
+            <div class="field-hint is-error customer-form-error" id="customerFormError" hidden></div>
 
             <div class="customer-modal-actions">
 
@@ -661,7 +656,7 @@ $adminInitial = strtoupper(substr(trim($adminName), 0, 1)) ?: 'A';
                 <button type="submit"
                         class="primary-button"
                         id="customerSubmit">
-                    Add Customer
+                    Save Customer
                 </button>
 
             </div>
@@ -779,6 +774,8 @@ $adminInitial = strtoupper(substr(trim($adminName), 0, 1)) ?: 'A';
 
 
         <form method="post">
+
+            <input type="hidden" name="csrf_token" value="<?= h(csrfToken()) ?>">
 
             <input type="hidden"
                    name="action"
