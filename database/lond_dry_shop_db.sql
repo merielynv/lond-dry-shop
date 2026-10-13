@@ -14,10 +14,10 @@
 -- Charset: utf8mb4 (full Unicode support, e.g. peso sign / names)
 -- =====================================================================
 
-DROP DATABASE IF EXISTS lond_dry_shop_db;
-CREATE DATABASE lond_dry_shop_db
-    CHARACTER SET utf8mb4
-    COLLATE utf8mb4_unicode_ci;
+-- DROP DATABASE IF EXISTS lond_dry_shop_db;
+-- CREATE DATABASE lond_dry_shop_db
+--     CHARACTER SET utf8mb4
+--     COLLATE utf8mb4_unicode_ci;
 
 USE lond_dry_shop_db;
 
