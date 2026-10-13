@@ -27,11 +27,11 @@ function isLoggedIn(): bool
 function requireRole(string $role): void
 {
     if (!isLoggedIn()) {
-        header('Location: /lond-dry-shop/index.php?error=' . urlencode('Please log in to continue.'));
+        header('Location: /index.php?error=' . urlencode('Please log in to continue.'));
         exit;
     }
     if ($_SESSION['role'] !== $role) {
-        header('Location: /lond-dry-shop/index.php?error=' . urlencode('You are not authorized to access that page.'));
+        header('Location: /index.php?error=' . urlencode('You are not authorized to access that page.'));
         exit;
     }
 }
@@ -40,9 +40,9 @@ function requireRole(string $role): void
 function redirectToDashboard(string $role): void
 {
     if ($role === 'admin') {
-        header('Location: /lond-dry-shop/admin/dashboard.php');
+        header('Location: /admin/dashboard.php');
     } else {
-        header('Location: /lond-dry-shop/staff/dashboard.php');
+        header('Location: /staff/dashboard.php');
     }
     exit;
 }
