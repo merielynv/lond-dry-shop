@@ -9,6 +9,8 @@
   'use strict';
 
   /* =========================================================
+     SEARCH + STATUS FILTER (Requirement #5)
+     ========================================================= */
 
   var search = document.getElementById('trackerSearch');
   var statusFilter = document.getElementById('trackerStatusFilter');

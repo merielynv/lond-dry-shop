@@ -87,7 +87,7 @@ DROP TABLE IF EXISTS orders;
 CREATE TABLE orders (
     order_id        INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,       -- Unique order ID (internal)
     customer_id     INT UNSIGNED        NOT NULL,                  -- FK -> customers
-    user_id         INT UNSIGNED        NOT NULL,                  -- FK -> users (staff who encoded the order)
+    user_id         INT UNSIGNED        NOT NULL,                  -- FK -> users (staff who encoded the order; 'staff' role only, never an admin)
     claim_code      VARCHAR(30)         NOT NULL UNIQUE,           -- Customer-facing alpha-numeric tracking code
     order_status    ENUM('Received','In Progress','Ready','Released','Cancelled')
                                         NOT NULL DEFAULT 'Received', -- Current processing state
@@ -239,6 +239,7 @@ BEGIN
     DECLARE canc_datetime DATETIME;
     DECLARE v_customer_id INT;
     DECLARE v_user_id INT;
+    DECLARE v_staff_count INT DEFAULT 0;
     DECLARE v_status VARCHAR(20);
     DECLARE v_claim_code VARCHAR(30);
     DECLARE v_service_id INT;
@@ -250,6 +251,18 @@ BEGIN
     DECLARE v_ref_no VARCHAR(50);
     DECLARE v_amount_paid DECIMAL(10,2);
     DECLARE v_amount_change DECIMAL(10,2);
+
+    -- Orders are encoded at the counter, so they may only be assigned to
+    -- STAFF accounts. Admins (shop owners) oversee the business and never
+    -- encode orders. Stop early if no active staff account exists.
+    SELECT COUNT(*) INTO v_staff_count
+      FROM users
+     WHERE role = 'staff' AND is_active = TRUE;
+
+    IF v_staff_count = 0 THEN
+        SIGNAL SQLSTATE '45000'
+            SET MESSAGE_TEXT = 'No active staff account found: add at least one staff user before generating order history.';
+    END IF;
 
     WHILE i <= target_records DO
         -- Random date between 365 days ago and today
@@ -289,8 +302,12 @@ BEGIN
 
         -- Random customer from ID 1 to 10
         SET v_customer_id = 1 + FLOOR(RAND() * 10);
-        -- Random staff user (2 to 4)
-        SET v_user_id = 2 + FLOOR(RAND() * 3);
+        -- Random ACTIVE STAFF user only (admins are never assigned to orders)
+        SELECT user_id INTO v_user_id
+          FROM users
+         WHERE role = 'staff' AND is_active = TRUE
+         ORDER BY RAND()
+         LIMIT 1;
         SET v_claim_code = CONCAT('LRY-', YEAR(order_datetime), '-', LPAD(i + 500, 4, '0'));
 
         -- Random service (1 to 5)
