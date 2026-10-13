@@ -1,3 +1,4 @@
+<?php
 /**
  * LOND Dry Shop - Database Connection
  * ITP104 - Information Management 2 | Semestral Project
@@ -10,7 +11,6 @@
  * setup before running. Never commit real production credentials.
  */
 
-<?php
 function getDBConnection() {
     $host = getenv('DB_HOST') ?: 'localhost';
     $port = getenv('DB_PORT') ?: '3306';
