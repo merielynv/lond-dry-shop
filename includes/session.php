@@ -24,6 +24,7 @@ function isLoggedIn(): bool
 }
 
 /** Restrict a page to a specific role (e.g. 'admin' or 'staff'). */
+/** Add lond_dry_shop/ if you want to go back to local host */
 function requireRole(string $role): void
 {
     if (!isLoggedIn()) {

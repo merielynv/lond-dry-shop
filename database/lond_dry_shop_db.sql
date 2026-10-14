@@ -14,6 +14,8 @@
 -- Charset: utf8mb4 (full Unicode support, e.g. peso sign / names)
 -- =====================================================================
 
+/** Uncomment this to run again in local mysqlworkbench */
+
 -- DROP DATABASE IF EXISTS lond_dry_shop_db;
 -- CREATE DATABASE lond_dry_shop_db
 --     CHARACTER SET utf8mb4
