@@ -49,9 +49,11 @@ $dailyRows = [];
 $topCustomers = [];
 
 try {
-    /* Revenue comes from payments, following the shop's pay-first policy. */
+    /* Net revenue = amount kept by the shop (amount_paid - change).
+       Gross amount_paid would overstate revenue when customers overpay
+       and receive change. amount_paid - amount_change = order total. */
     $stmt = $pdo->prepare(
-        "SELECT COALESCE(SUM(p.amount_paid), 0)
+        "SELECT COALESCE(SUM(p.amount_paid - p.amount_change), 0)
            FROM payments p
            INNER JOIN orders o ON p.order_id = o.order_id
           WHERE DATE(o.created_at) BETWEEN ? AND ?"
@@ -127,12 +129,12 @@ try {
     $stmt->execute([$from, $to]);
     $serviceRows = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-    /* Payment methods. */
+    /* Payment methods — net amount kept (not gross tendered). */
     $stmt = $pdo->prepare(
         "SELECT
             p.payment_method,
             COUNT(*) AS transactions,
-            COALESCE(SUM(p.amount_paid), 0) AS amount
+            COALESCE(SUM(p.amount_paid - p.amount_change), 0) AS amount
          FROM payments p
          INNER JOIN orders o ON p.order_id = o.order_id
          WHERE DATE(o.created_at) BETWEEN ? AND ?
@@ -142,12 +144,12 @@ try {
     $stmt->execute([$from, $to]);
     $paymentRows = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-    /* Daily revenue. */
+    /* Daily revenue — same net formula for audit accuracy. */
     $stmt = $pdo->prepare(
         "SELECT
             DATE(o.created_at) AS report_date,
             COUNT(DISTINCT o.order_id) AS orders,
-            COALESCE(SUM(p.amount_paid), 0) AS revenue
+            COALESCE(SUM(p.amount_paid - p.amount_change), 0) AS revenue
          FROM orders o
          LEFT JOIN payments p ON p.order_id = o.order_id
          WHERE DATE(o.created_at) BETWEEN ? AND ?

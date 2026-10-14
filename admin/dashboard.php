@@ -15,11 +15,17 @@
  * leak raw errors — metrics just fall back to 0 with a friendly notice.
  * Requirement #11 (System Security): read-only aggregate queries only,
  * no user input is interpolated into SQL here.
+ *
+ * NOTE: The orders table uses order_status = 'Released' (customer has
+ * picked up the laundry). There is no 'Completed' value in the ENUM.
+ * Metrics and badges below query / map 'Released'.
  */
 
 require_once __DIR__ . '/../includes/session.php';
 requireRole('admin');
 require_once __DIR__ . '/../includes/db.php';
+
+date_default_timezone_set('Asia/Manila');
 
 /* ---------------------------------------------------------------------
    Fetch dashboard metrics
@@ -35,19 +41,21 @@ $dashboardError = null;
 try {
     $pdo = getDBConnection();
 
-    // Total revenue collected today (payments are recorded at drop-off
-    // under the shop's pay-first policy, so this tracks orders.created_at).
+    // Revenue = amount kept by the shop (amount_paid minus change given back).
+    // Using gross amount_paid would overstate revenue whenever a customer
+    // tenders more than the order total (e.g. pays ₱500 for a ₱360 order).
+    // amount_paid - amount_change equals orders.total_amount for each payment.
     $stmt = $pdo->query(
-        "SELECT COALESCE(SUM(p.amount_paid), 0) AS total
+        "SELECT COALESCE(SUM(p.amount_paid - p.amount_change), 0) AS total
            FROM payments p
            INNER JOIN orders o ON p.order_id = o.order_id
           WHERE DATE(o.created_at) = CURDATE()"
     );
     $todayRevenue = (float) $stmt->fetchColumn();
 
-    // Total revenue collected this calendar month.
+    // Same net-revenue rule for the calendar month.
     $stmt = $pdo->query(
-        "SELECT COALESCE(SUM(p.amount_paid), 0) AS total
+        "SELECT COALESCE(SUM(p.amount_paid - p.amount_change), 0) AS total
            FROM payments p
            INNER JOIN orders o ON p.order_id = o.order_id
           WHERE YEAR(o.created_at) = YEAR(CURDATE())
@@ -55,23 +63,25 @@ try {
     );
     $monthRevenue = (float) $stmt->fetchColumn();
 
-    // Orders still moving through the shop floor (not yet Completed/Cancelled).
+    // Orders still moving through the shop floor (not yet Released/Cancelled).
+    // Schema ENUM: 'Received','In Progress','Ready','Released','Cancelled'
     $stmt = $pdo->query(
         "SELECT COUNT(*) FROM orders
-          WHERE order_status NOT IN ('Completed', 'Cancelled')"
+          WHERE order_status NOT IN ('Released', 'Cancelled')"
     );
     $activeOrders = (int) $stmt->fetchColumn();
 
-    // Total completed drop-offs, all time.
+    // Total completed drop-offs (Released = customer has claimed the laundry).
     $stmt = $pdo->query(
-        "SELECT COUNT(*) FROM orders WHERE order_status = 'Completed'"
+        "SELECT COUNT(*) FROM orders WHERE order_status = 'Released'"
     );
     $completedTotal = (int) $stmt->fetchColumn();
 
-    // Of those, how many were completed (released) today.
+    // Of those, how many were released (picked up) today.
     $stmt = $pdo->query(
         "SELECT COUNT(*) FROM orders
-          WHERE order_status = 'Completed' AND DATE(completed_at) = CURDATE()"
+          WHERE order_status = 'Released'
+            AND DATE(completed_at) = CURDATE()"
     );
     $completedToday = (int) $stmt->fetchColumn();
 
@@ -104,7 +114,7 @@ function statusBadgeClass(?string $status): string
         case 'Received':    return 'badge--received';
         case 'In Progress': return 'badge--progress';
         case 'Ready':       return 'badge--ready';
-        case 'Completed':   return 'badge--completed';
+        case 'Released':    return 'badge--completed';  // released = completed drop-off
         case 'Cancelled':   return 'badge--cancelled';
         default:            return 'badge--default';
     }

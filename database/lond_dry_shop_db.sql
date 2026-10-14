@@ -360,3 +360,255 @@ CALL sp_generate_laundry_history();
 
 -- Clean up procedure
 DROP PROCEDURE sp_generate_laundry_history;
+
+
+-- =====================================================================
+-- Helpful verification queries for debugging and oral defense demos.
+-- (All of these are READ-ONLY — they do not change data.)
+-- =====================================================================
+
+-- ---------------------------------------------------------------------
+-- 1. QUICK HEALTH CHECK — row counts per table
+-- ---------------------------------------------------------------------
+/*
+SELECT 'users' AS tbl, COUNT(*) AS rows FROM users
+UNION ALL SELECT 'customers', COUNT(*) FROM customers
+UNION ALL SELECT 'services', COUNT(*) FROM services
+UNION ALL SELECT 'orders', COUNT(*) FROM orders
+UNION ALL SELECT 'order_items', COUNT(*) FROM order_items
+UNION ALL SELECT 'payments', COUNT(*) FROM payments;
+*/
+
+-- ---------------------------------------------------------------------
+-- 2. ORDER STATUS BREAKDOWN
+-- Shows how many orders are in each lifecycle state.
+-- ---------------------------------------------------------------------
+/*
+SELECT order_status, COUNT(*) AS total
+  FROM orders
+ GROUP BY order_status
+ ORDER BY FIELD(order_status, 'Received','In Progress','Ready','Released','Cancelled');
+*/
+
+-- ---------------------------------------------------------------------
+-- 3. REVENUE — NET vs GROSS (the audit fix)
+-- Net  = amount kept by the shop  (amount_paid - amount_change)
+-- Gross = cash tendered by customer (can be higher when there is change)
+-- Net should match SUM of non-cancelled order totals.
+-- ---------------------------------------------------------------------
+/*
+SELECT
+    ROUND(SUM(p.amount_paid), 2)                        AS gross_tendered,
+    ROUND(SUM(p.amount_change), 2)                      AS total_change_given,
+    ROUND(SUM(p.amount_paid - p.amount_change), 2)      AS net_revenue,
+    ROUND(SUM(o.total_amount), 2)                       AS sum_of_order_totals
+  FROM payments p
+  INNER JOIN orders o ON o.order_id = p.order_id;
+*/
+
+-- Today's net revenue (same formula the dashboard uses)
+/*
+SELECT ROUND(SUM(p.amount_paid - p.amount_change), 2) AS revenue_today
+  FROM payments p
+  INNER JOIN orders o ON o.order_id = p.order_id
+ WHERE DATE(o.created_at) = CURDATE();
+*/
+
+-- This month's net revenue
+/*
+SELECT ROUND(SUM(p.amount_paid - p.amount_change), 2) AS revenue_this_month
+  FROM payments p
+  INNER JOIN orders o ON o.order_id = p.order_id
+ WHERE YEAR(o.created_at) = YEAR(CURDATE())
+   AND MONTH(o.created_at) = MONTH(CURDATE());
+*/
+
+-- ---------------------------------------------------------------------
+-- 4. SPOT-CHECK: payments where customer got change
+-- Proves amount_change is stored and net = order total.
+-- ---------------------------------------------------------------------
+/*
+SELECT
+    o.claim_code,
+    o.total_amount,
+    p.payment_method,
+    p.amount_paid,
+    p.amount_change,
+    ROUND(p.amount_paid - p.amount_change, 2) AS net_kept
+  FROM payments p
+  INNER JOIN orders o ON o.order_id = p.order_id
+ WHERE p.amount_change > 0
+ ORDER BY o.created_at DESC
+ LIMIT 15;
+*/
+
+-- Sanity: every payment's net must equal its order total
+/*
+SELECT COUNT(*) AS mismatches
+  FROM payments p
+  INNER JOIN orders o ON o.order_id = p.order_id
+ WHERE ROUND(p.amount_paid - p.amount_change, 2) <> ROUND(o.total_amount, 2);
+-- Expected result: 0
+*/
+
+-- ---------------------------------------------------------------------
+-- 5. PAYMENT METHOD MIX
+-- ---------------------------------------------------------------------
+/*
+SELECT
+    p.payment_method,
+    COUNT(*) AS transactions,
+    ROUND(SUM(p.amount_paid - p.amount_change), 2) AS net_amount
+  FROM payments p
+ GROUP BY p.payment_method;
+*/
+
+-- ---------------------------------------------------------------------
+-- 6. LOOK UP ONE ORDER (receipt / tracking demo)
+-- Replace the claim code with any real code from the seed data.
+-- ---------------------------------------------------------------------
+/*
+SELECT o.claim_code, o.order_status, o.total_amount, o.created_at,
+       c.full_name AS customer, c.phone_number,
+       u.full_name AS encoded_by
+  FROM orders o
+  INNER JOIN customers c ON c.customer_id = o.customer_id
+  INNER JOIN users u ON u.user_id = o.user_id
+ WHERE o.claim_code = 'LRY-2026-0501';   -- <-- change this
+*/
+
+-- Line items for that order
+/*
+SELECT s.service_name, oi.quantity, s.unit_type,
+       oi.unit_price_at_time, oi.subtotal
+  FROM order_items oi
+  INNER JOIN services s ON s.service_id = oi.service_id
+  INNER JOIN orders o ON o.order_id = oi.order_id
+ WHERE o.claim_code = 'LRY-2026-0501';
+*/
+
+-- Payment for that order
+/*
+SELECT p.payment_method, p.reference_number, p.amount_paid, p.amount_change
+  FROM payments p
+  INNER JOIN orders o ON o.order_id = p.order_id
+ WHERE o.claim_code = 'LRY-2026-0501';
+*/
+
+-- ---------------------------------------------------------------------
+-- 7. CUSTOMER DIRECTORY / SEARCH
+-- ---------------------------------------------------------------------
+/*
+SELECT customer_id, full_name, phone_number, address
+  FROM customers
+ ORDER BY last_name, first_name
+ LIMIT 20;
+*/
+
+-- Search by phone fragment or name
+/*
+SELECT customer_id, full_name, phone_number, address
+  FROM customers
+ WHERE full_name LIKE '%Santos%'
+    OR phone_number LIKE '%0917%';
+*/
+
+-- Customers with the most order value (non-cancelled)
+/*
+SELECT c.full_name, c.phone_number,
+       COUNT(o.order_id) AS orders,
+       ROUND(SUM(CASE WHEN o.order_status <> 'Cancelled'
+                      THEN o.total_amount ELSE 0 END), 2) AS total_value
+  FROM customers c
+  INNER JOIN orders o ON o.customer_id = c.customer_id
+ GROUP BY c.customer_id, c.full_name, c.phone_number
+ ORDER BY total_value DESC
+ LIMIT 10;
+*/
+
+-- ---------------------------------------------------------------------
+-- 8. SERVICE CATALOG
+-- ---------------------------------------------------------------------
+/*
+SELECT service_id, service_name, unit_type, current_price,
+       category_type, IF(is_active, 'Active', 'Archived') AS status
+  FROM services
+ ORDER BY is_active DESC, category_type, service_name;
+*/
+
+-- ---------------------------------------------------------------------
+-- 9. USERS / STAFF ACCOUNTS
+-- (Never SELECT password_hash during a live demo unless asked.)
+-- ---------------------------------------------------------------------
+/*
+SELECT user_id, full_name, username, role,
+       IF(is_active, 'Active', 'Disabled') AS status, created_at
+  FROM users
+ ORDER BY role, full_name;
+*/
+
+-- ---------------------------------------------------------------------
+-- 10. ACTIVE SHOP-FLOOR ORDERS (not yet Released / Cancelled)
+-- ---------------------------------------------------------------------
+/*
+SELECT o.claim_code, c.full_name, o.order_status, o.total_amount,
+       o.created_at,
+       DATEDIFF(NOW(), o.created_at) AS days_in_shop
+  FROM orders o
+  INNER JOIN customers c ON c.customer_id = o.customer_id
+ WHERE o.order_status NOT IN ('Released', 'Cancelled')
+ ORDER BY o.created_at ASC;
+*/
+
+-- Aging: still on the floor 3+ days
+/*
+SELECT o.claim_code, c.full_name, o.order_status,
+       DATEDIFF(NOW(), o.created_at) AS days_in_shop
+  FROM orders o
+  INNER JOIN customers c ON c.customer_id = o.customer_id
+ WHERE o.order_status NOT IN ('Released', 'Cancelled')
+   AND o.created_at <= (NOW() - INTERVAL 3 DAY)
+ ORDER BY days_in_shop DESC;
+*/
+
+-- ---------------------------------------------------------------------
+-- 11. FOREIGN-KEY / RELATIONSHIP SPOT CHECKS
+-- ---------------------------------------------------------------------
+-- Every order has a customer and a staff user
+/*
+SELECT COUNT(*) AS orphan_orders
+  FROM orders o
+  LEFT JOIN customers c ON c.customer_id = o.customer_id
+  LEFT JOIN users u ON u.user_id = o.user_id
+ WHERE c.customer_id IS NULL OR u.user_id IS NULL;
+-- Expected: 0
+*/
+
+-- Every payment belongs to an order
+/*
+SELECT COUNT(*) AS orphan_payments
+  FROM payments p
+  LEFT JOIN orders o ON o.order_id = p.order_id
+ WHERE o.order_id IS NULL;
+-- Expected: 0
+*/
+
+-- Orders are only encoded by staff (never admin)
+/*
+SELECT u.role, COUNT(*) AS orders_encoded
+  FROM orders o
+  INNER JOIN users u ON u.user_id = o.user_id
+ GROUP BY u.role;
+-- Expected: only 'staff' rows
+*/
+
+-- ---------------------------------------------------------------------
+-- 12. CLAIM-CODE UNIQUENESS (public tracking key)
+-- ---------------------------------------------------------------------
+/*
+SELECT claim_code, COUNT(*) AS times_used
+  FROM orders
+ GROUP BY claim_code
+HAVING COUNT(*) > 1;
+-- Expected: empty result (all claim codes unique)
+*/
